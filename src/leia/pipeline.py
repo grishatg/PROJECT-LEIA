@@ -308,6 +308,8 @@ def score(
                 model_id=out.model_id,
                 tokens_in=out.tokens_in,
                 tokens_out=out.tokens_out,
+                cache_read_tokens=out.cache_read_tokens,
+                cache_write_tokens=out.cache_write_tokens,
                 cost_usd=out.cost_usd,
                 scored_at=utcnow(),
             )
@@ -360,6 +362,8 @@ def draft(
                     model_id=out.model_id,
                     tokens_in=out.tokens_in,
                     tokens_out=out.tokens_out,
+                    cache_read_tokens=out.cache_read_tokens,
+                    cache_write_tokens=out.cache_write_tokens,
                     cost_usd=out.cost_usd,
                     status=DraftStatus.DRAFT,
                 )

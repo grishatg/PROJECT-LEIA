@@ -9,9 +9,20 @@ from leia.llm.client import LLMBrain
 from leia.schemas import ProspectFacts
 
 
-def _fake_response(tool_input: dict, tokens_in: int = 100, tokens_out: int = 20):
+def _fake_response(
+    tool_input: dict,
+    tokens_in: int = 100,
+    tokens_out: int = 20,
+    cache_read: int = 0,
+    cache_write: int = 0,
+):
     block = types.SimpleNamespace(type="tool_use", input=tool_input)
-    usage = types.SimpleNamespace(input_tokens=tokens_in, output_tokens=tokens_out)
+    usage = types.SimpleNamespace(
+        input_tokens=tokens_in,
+        output_tokens=tokens_out,
+        cache_read_input_tokens=cache_read,
+        cache_creation_input_tokens=cache_write,
+    )
     return types.SimpleNamespace(content=[block], usage=usage)
 
 
@@ -55,6 +66,23 @@ def test_score_parses_tool_use_and_costs():
     # Forced the structured tool, and set a cache breakpoint on the stable system prefix.
     assert kwargs["tool_choice"] == {"type": "tool", "name": "record_score"}
     assert kwargs["system"][0]["cache_control"] == {"type": "ephemeral"}
+
+
+def test_score_captures_cache_tokens_and_costs_them():
+    brain = _brain(
+        _fake_response(
+            {"score": 50, "tier": "B", "rationale": "ok", "matched_criteria": []},
+            tokens_in=100,
+            tokens_out=20,
+            cache_read=4000,
+        )
+    )
+    out = brain.score(ProspectFacts(full_name="Tom Riley"), load_icp(), load_value_prop())
+    assert out.cache_read_tokens == 4000
+    assert out.cache_write_tokens == 0
+    # 100 in + 20 out at $5/$25, plus 4000 cache-read at 0.1x of $5/MTok:
+    # 0.0005 + 0.0005 + (4000/1e6)*5*0.1 = 0.001 + 0.002
+    assert out.cost_usd == 0.003
 
 
 def test_draft_parses_tool_use():

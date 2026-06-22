@@ -59,6 +59,11 @@ class LLMBrain:
             model=self.brain_model,
             max_tokens=self.max_tokens,
             # Stable, cacheable prefix in `system`; volatile per-lead facts in `messages`.
+            # NOTE: Anthropic only caches a prefix once it clears the model minimum
+            # (4096 tokens for Opus/Haiku, 2048 for Sonnet). Our rendered system
+            # prompts sit well under that today, so this marker is a no-op until the
+            # ICP / value-prop / guidelines prefix grows past the threshold. The
+            # cache_read/write token fields below make it observable when it engages.
             system=[{"type": "text", "text": system_text, "cache_control": {"type": "ephemeral"}}],
             messages=[{"role": "user", "content": user_text}],
             tools=[tool],
@@ -84,12 +89,16 @@ class LLMBrain:
             tool_name="record_score",
         )
         ti, to = usage.input_tokens, usage.output_tokens
+        cr = getattr(usage, "cache_read_input_tokens", 0) or 0
+        cw = getattr(usage, "cache_creation_input_tokens", 0) or 0
         return ScoreOutput(
             result=result,
             model_id=self.brain_model,
             tokens_in=ti,
             tokens_out=to,
-            cost_usd=cost_usd(self.brain_model, ti, to),
+            cache_read_tokens=cr,
+            cache_write_tokens=cw,
+            cost_usd=cost_usd(self.brain_model, ti, to, cr, cw),
         )
 
     def draft(
@@ -107,10 +116,14 @@ class LLMBrain:
             tool_name="record_draft",
         )
         ti, to = usage.input_tokens, usage.output_tokens
+        cr = getattr(usage, "cache_read_input_tokens", 0) or 0
+        cw = getattr(usage, "cache_creation_input_tokens", 0) or 0
         return DraftOutput(
             result=result,
             model_id=self.brain_model,
             tokens_in=ti,
             tokens_out=to,
-            cost_usd=cost_usd(self.brain_model, ti, to),
+            cache_read_tokens=cr,
+            cache_write_tokens=cw,
+            cost_usd=cost_usd(self.brain_model, ti, to, cr, cw),
         )

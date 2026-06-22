@@ -21,6 +21,8 @@ class ScoreOutput(BaseModel):
     model_id: str
     tokens_in: int = 0
     tokens_out: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
     cost_usd: float = 0.0
 
 
@@ -29,6 +31,8 @@ class DraftOutput(BaseModel):
     model_id: str
     tokens_in: int = 0
     tokens_out: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
     cost_usd: float = 0.0
 
 
