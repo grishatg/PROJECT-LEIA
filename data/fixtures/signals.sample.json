@@ -1,0 +1,20 @@
+[
+  {
+    "source": "apify_linkedin",
+    "source_ref": "https://www.linkedin.com/posts/example-net-zero-post",
+    "full_name": "Tom Riley",
+    "headline": "Sustainability Director at GridCo",
+    "company_name": "GridCo",
+    "linkedin_url": "https://www.linkedin.com/in/tom-riley-gridco",
+    "engagement": "commented"
+  },
+  {
+    "source": "apify_linkedin",
+    "source_ref": "https://www.linkedin.com/posts/example-net-zero-post",
+    "full_name": "Jane Carter",
+    "headline": "Energy Manager at Northwind Utilities",
+    "company_name": "Northwind Utilities",
+    "linkedin_url": "https://www.linkedin.com/in/jane-carter-energy",
+    "engagement": "liked"
+  }
+]

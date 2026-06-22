@@ -1,0 +1,60 @@
+# icp.yaml — WHO to target (your Ideal Customer Profile).
+# This is the single most important file you edit. Claude scores every prospect
+# against these criteria. Run `uv run leia config-check` after editing to validate.
+#
+# The example below is a UK / energy-sector B2B profile. Change everything to suit you.
+
+name: "UK Energy B2B"
+version: 1
+
+# Industries / sectors your best customers come from.
+industries:
+  - "Renewable energy"
+  - "Utilities"
+  - "Energy storage"
+  - "EV charging"
+  - "Energy management / efficiency"
+
+# Company size band (number of employees). Leave a value null to ignore that bound.
+company_size:
+  min: 50
+  max: 5000
+
+# Seniority levels worth contacting.
+seniorities:
+  - "Head"
+  - "Director"
+  - "VP"
+  - "C-level"
+  - "Founder"
+
+# Job titles / roles that indicate a fit (keywords; matched loosely by Claude).
+titles:
+  - "Head of Procurement"
+  - "Energy Manager"
+  - "Sustainability Director"
+  - "Operations Director"
+  - "Chief Technology Officer"
+
+# Geographies to include (countries / regions).
+geographies:
+  - "United Kingdom"
+  - "Ireland"
+
+# Positive keywords/technologies that signal a good fit.
+keywords:
+  - "net zero"
+  - "decarbonisation"
+  - "solar"
+  - "battery storage"
+  - "grid"
+
+# Hard excludes — never contact if any of these match.
+exclude:
+  - "student"
+  - "intern"
+  - "retired"
+  - "competitor"
+
+# Minimum Claude score (0-100) for a prospect to proceed to drafting.
+score_threshold: 60

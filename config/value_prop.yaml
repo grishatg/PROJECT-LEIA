@@ -1,0 +1,29 @@
+# value_prop.yaml — WHAT you offer.
+# Feeds both scoring (is this prospect relevant to what we sell?) and drafting
+# (so messages are specific and credible). Keep it honest and concrete.
+
+# One or two sentences: what you do and for whom.
+offer: >
+  We help UK energy and utility firms cut procurement costs and hit net-zero
+  targets faster with data-driven energy management.
+
+# 2-3 concrete proof points (results, names, numbers). Specificity builds trust.
+proof_points:
+  - "Cut energy spend 18% for a mid-size utility in 6 months"
+  - "Trusted by 30+ UK energy teams"
+  - "Onboards in under 2 weeks"
+
+# What makes you different from the alternatives.
+differentiators:
+  - "Built specifically for the UK energy market"
+  - "No long-term lock-in"
+  - "Hands-on onboarding, not just software"
+
+# The pains your prospects feel that you solve.
+pain_points:
+  - "Rising and unpredictable energy costs"
+  - "Pressure to evidence decarbonisation progress"
+  - "Manual, spreadsheet-driven energy reporting"
+
+# The call to action you want in outreach (what you're asking for).
+cta: "a quick 15-minute call to see if it's a fit"

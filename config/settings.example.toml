@@ -1,0 +1,26 @@
+# settings.example.toml — non-secret application knobs.
+# Copy to `settings.toml` to override defaults. Secrets go in `.env`, NOT here.
+
+[models]
+# Claude model used for scoring + drafting (quality matters here).
+brain = "claude-opus-4-8"
+# Optional cheap pre-filter model to drop obvious non-fits before paying for the brain.
+prefilter = "claude-haiku-4-5"
+
+[limits]
+# Hard daily spend cap (USD) on Claude usage. A run halts if it would exceed this.
+daily_spend_cap_usd = 5.0
+# Max prospects processed per run (a safety brake while you're learning).
+max_prospects_per_run = 100
+# Max messages sent per day per channel (used once sending is enabled).
+daily_send_cap = 25
+
+[scoring]
+# Run the cheap prefilter before the brain to save cost on obvious non-fits.
+use_prefilter = false
+
+[paths]
+# Config file locations (relative to repo root).
+icp = "config/icp.yaml"
+value_prop = "config/value_prop.yaml"
+message_guidelines = "config/message_guidelines.md"
