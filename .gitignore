@@ -6,6 +6,10 @@ data/*.db
 data/*.db-journal
 data/*.sqlite3
 
+# Git bundles and patches (portable artifacts, not source)
+*.bundle
+*.patch
+
 # Python
 __pycache__/
 *.py[cod]
