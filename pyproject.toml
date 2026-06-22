@@ -16,7 +16,9 @@ dependencies = [
     "python-dotenv>=1.0",
     "rich>=13.0",
     "httpx>=0.27",
-    "streamlit>=1.40",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "jinja2>=3.1",
 ]
 
 [project.scripts]
@@ -50,5 +52,5 @@ extend-exclude = ["alembic/versions"]
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.ruff.lint.flake8-bugbear]
-# Typer's API intentionally uses these as argument defaults.
-extend-immutable-calls = ["typer.Option", "typer.Argument"]
+# Typer and FastAPI intentionally use these as argument defaults.
+extend-immutable-calls = ["typer.Option", "typer.Argument", "fastapi.Depends", "fastapi.Body"]

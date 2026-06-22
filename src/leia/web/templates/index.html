@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PROJECT-LEIA</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">L</div>
+        <div class="brand-text">LEIA<span>lead-gen agent</span></div>
+      </div>
+      <nav>
+        <button class="nav-item active" data-view="dashboard">📊 Dashboard</button>
+        <button class="nav-item" data-view="review">✉️ Review <span class="pill" id="nav-pending">0</span></button>
+        <button class="nav-item" data-view="run">🚀 Run</button>
+        <button class="nav-item" data-view="send">📤 Send</button>
+        <button class="nav-item" data-view="settings">⚙️ Settings</button>
+      </nav>
+      <div class="sidebar-foot">
+        <div id="key-status" class="key-status"></div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="main">
+      <!-- DASHBOARD -->
+      <section class="view active" id="view-dashboard">
+        <h1>Dashboard</h1>
+        <p class="sub">Your pipeline at a glance. Nothing sends until you approve it.</p>
+
+        <div class="tiles" id="tiles"></div>
+
+        <div class="charts">
+          <div class="card chart-card">
+            <h3>📈 Outreach Activity</h3>
+            <div class="chart" id="chart-activity"></div>
+            <div class="legend">
+              <span><i class="dot dot-blue"></i>Drafted</span>
+              <span><i class="dot dot-green"></i>Sent</span>
+            </div>
+          </div>
+          <div class="card chart-card">
+            <h3>✉️ Engagement</h3>
+            <div class="chart-empty">
+              <div>
+                <div class="emoji">🔜</div>
+                <p>Delivered · Opened · Replied</p>
+                <small>Coming soon — needs reply tracking from Instantly/Unipile.</small>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>🕓 Recent sends</h3>
+          <div id="history"></div>
+        </div>
+      </section>
+
+      <!-- REVIEW -->
+      <section class="view" id="view-review">
+        <h1>Review queue</h1>
+        <p class="sub">Edit if you like, then Approve or Reject. Approving only marks it ready — it does not send.</p>
+        <div class="inbox">
+          <div class="inbox-list" id="inbox-list"></div>
+          <div class="inbox-read card" id="inbox-read">
+            <div class="empty-read">Select a draft on the left to review it.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- RUN -->
+      <section class="view" id="view-run">
+        <h1>Run the pipeline</h1>
+        <p class="sub">Find prospects → enrich → score → draft. Dry-run is free and instant.</p>
+        <div class="card form-card">
+          <label>Source
+            <select id="run-source">
+              <option value="manual_csv">Manual CSV file</option>
+              <option value="lusha_prospecting">Lusha prospecting</option>
+              <option value="lusha_signals">Lusha intent signals</option>
+              <option value="apify_linkedin">Apify / LinkedIn</option>
+            </select>
+          </label>
+          <label id="row-csv">CSV path
+            <input type="text" id="run-csv" value="data/fixtures/contacts.sample.csv" />
+          </label>
+          <label id="row-dataset" style="display:none">Apify dataset id
+            <input type="text" id="run-dataset" placeholder="dataset id" />
+          </label>
+          <label>Limit (max prospects)
+            <input type="number" id="run-limit" value="3" min="1" />
+          </label>
+          <label class="checkbox">
+            <input type="checkbox" id="run-dry" checked /> Dry-run (no spend, no real data)
+          </label>
+          <button class="btn primary" id="btn-run">🚀 Run pipeline</button>
+          <div class="result" id="run-result"></div>
+        </div>
+      </section>
+
+      <!-- SEND -->
+      <section class="view" id="view-send">
+        <h1>Send approved</h1>
+        <p class="sub">Sends only the drafts you've approved. Everything else is untouched.</p>
+        <div class="card form-card">
+          <label class="checkbox">
+            <input type="checkbox" id="send-dry" checked /> Dry-run (don't actually send)
+          </label>
+          <button class="btn primary" id="btn-send">📤 Send approved</button>
+          <div class="result" id="send-result"></div>
+        </div>
+      </section>
+
+      <!-- SETTINGS -->
+      <section class="view" id="view-settings">
+        <h1>Settings — your Ideal Customer Profile</h1>
+        <p class="sub">Who LEIA targets and how strictly. Saved to config/icp.yaml.</p>
+        <div class="card form-card" id="icp-form">
+          <label>Profile name <input type="text" id="icp-name" /></label>
+          <label>Industries (one per line) <textarea id="icp-industries" rows="4"></textarea></label>
+          <label>Job titles (one per line) <textarea id="icp-titles" rows="4"></textarea></label>
+          <label>Geographies (one per line) <textarea id="icp-geographies" rows="3"></textarea></label>
+          <label>Keywords (one per line) <textarea id="icp-keywords" rows="3"></textarea></label>
+          <label>Exclude (one per line) <textarea id="icp-exclude" rows="2"></textarea></label>
+          <div class="row2">
+            <label>Company size min <input type="number" id="icp-size-min" /></label>
+            <label>Company size max <input type="number" id="icp-size-max" /></label>
+          </div>
+          <label>Score threshold (0–100) <input type="number" id="icp-threshold" min="0" max="100" /></label>
+          <button class="btn primary" id="btn-save-icp">💾 Save ICP</button>
+          <div class="result" id="icp-result"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
