@@ -1,0 +1,34 @@
+[
+  {
+    "full_name": "Jane Carter",
+    "headline": "Energy Manager at Northwind Utilities",
+    "company_name": "Northwind Utilities",
+    "linkedin_url": "https://www.linkedin.com/in/jane-carter-energy",
+    "email": "",
+    "country": "United Kingdom"
+  },
+  {
+    "full_name": "Tom Riley",
+    "headline": "Sustainability Director at GridCo",
+    "company_name": "GridCo",
+    "linkedin_url": "https://www.linkedin.com/in/tom-riley-gridco",
+    "email": "",
+    "country": "United Kingdom"
+  },
+  {
+    "full_name": "Priya Shah",
+    "headline": "Head of Procurement at Brightwave Energy",
+    "company_name": "Brightwave Energy",
+    "linkedin_url": "https://www.linkedin.com/in/priya-shah-brightwave",
+    "email": "",
+    "country": "United Kingdom"
+  },
+  {
+    "full_name": "Alex Doyle",
+    "headline": "Operations Director at Seabank Storage",
+    "company_name": "Seabank Storage",
+    "linkedin_url": "https://www.linkedin.com/in/alex-doyle-seabank",
+    "email": "",
+    "country": "Ireland"
+  }
+]
