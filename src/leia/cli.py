@@ -173,10 +173,13 @@ def run(
                 raise typer.Exit(code=1)
             from leia.sources.lusha import LushaProspectingSource
 
+            max_results = app_settings.lusha.max_prospects
+            if limit:
+                max_results = min(max_results, limit)
             signal_source = LushaProspectingSource(
                 settings.lusha_api_key,
                 icp,
-                max_results=app_settings.lusha.max_prospects,
+                max_results=max_results,
             )
 
     else:  # lusha_signals
@@ -192,12 +195,15 @@ def run(
                 raise typer.Exit(code=1)
             from leia.sources.lusha import LushaSignalsSource
 
+            max_results = app_settings.lusha.max_prospects
+            if limit:
+                max_results = min(max_results, limit)
             signal_source = LushaSignalsSource(
                 settings.lusha_api_key,
                 icp,
                 days_back=app_settings.lusha.signals_days_back,
                 signal_types=app_settings.lusha.signal_types,
-                max_results=app_settings.lusha.max_prospects,
+                max_results=max_results,
             )
 
     try:

@@ -1,11 +1,12 @@
 """Lusha email-finder enrichment provider.
 
-Implements the Enricher protocol. Prefers LinkedIn URL lookup (most accurate);
-falls back to first_name + last_name + company when no URL is available.
+Implements the Enricher protocol via Lusha's Person API
+(``GET https://api.lusha.com/v2/person``, verified against the live API).
+Prefers LinkedIn URL lookup (most accurate); falls back to
+first_name + last_name + companyName/companyDomain when no URL is available.
 
-NOTE: verify the exact request/response shape against your Lusha account on
-first real run; parsing is defensive and degrades to email_status=none on any
-error rather than crashing the pipeline.
+Parsing is defensive and degrades to email_status=none on any error rather than
+crashing the pipeline.
 """
 
 from __future__ import annotations
@@ -14,13 +15,21 @@ import httpx
 
 from leia.enrichment.base import EnrichmentQuery, EnrichmentResult
 
-LUSHA_PERSON_URL = "https://api.lusha.com/person"
+LUSHA_PERSON_URL = "https://api.lusha.com/v2/person"
 
 
-def _parse_company_size(raw: str | None) -> int | None:
-    """Parse Lusha's range strings like '11-50' or '1000+' to an integer (upper bound)."""
-    if not raw:
+def _parse_company_size(raw) -> int | None:
+    """Parse a company size into an integer upper bound.
+
+    Handles Lusha range strings like '11-50' / '1000+', plain ints, and dicts
+    such as ``{"min": 50, "max": 5000}``.
+    """
+    if raw is None:
         return None
+    if isinstance(raw, dict):
+        return raw.get("max") or raw.get("min")
+    if isinstance(raw, int):
+        return raw
     raw = str(raw).strip().replace("+", "")
     parts = raw.split("-")
     try:
@@ -40,19 +49,23 @@ class LushaEnricher:
 
     def enrich(self, query: EnrichmentQuery) -> EnrichmentResult:
         if query.linkedin_url:
-            payload: dict = {"linkedInUrl": query.linkedin_url}
+            params: dict = {"linkedinUrl": query.linkedin_url}
         else:
             parts = (query.full_name or "").split()
-            payload = {
+            params = {
                 "firstName": parts[0] if parts else "",
                 "lastName": parts[-1] if len(parts) >= 2 else "",
-                "company": query.company_name or query.domain or "",
             }
+            # Person API wants companyName OR companyDomain (not a generic 'company').
+            if query.company_name:
+                params["companyName"] = query.company_name
+            elif query.domain:
+                params["companyDomain"] = query.domain
 
-        headers = {"api_key": self.api_key, "Content-Type": "application/json"}
+        headers = {"api_key": self.api_key, "accept": "application/json"}
         try:
-            resp = httpx.post(
-                LUSHA_PERSON_URL, json=payload, headers=headers, timeout=self.timeout
+            resp = httpx.get(
+                LUSHA_PERSON_URL, params=params, headers=headers, timeout=self.timeout
             )
             resp.raise_for_status()
             body = resp.json()
@@ -61,26 +74,47 @@ class LushaEnricher:
                 email=None, email_status="none", provider=self.name, raw={"error": str(e)}
             )
 
-        data = (body or {}).get("data") or {}
-        emails: list[dict] = data.get("emails") or []
+        # V2 nests the contact under {"contact": {"data": {...}}}.
+        data = ((body or {}).get("contact") or {}).get("data") or {}
+        emails: list[dict] = data.get("emailAddresses") or []
 
-        # Prefer a professional email; fall back to first available.
+        # Prefer a work email; fall back to the first available.
         email = next(
-            (e.get("emailAddress") for e in emails if e.get("type") == "professional"),
+            (e.get("email") for e in emails if e.get("emailType") == "work"),
             None,
-        ) or (emails[0].get("emailAddress") if emails else None)
+        ) or (emails[0].get("email") if emails else None)
 
         email_status = "verified" if email else "none"
+
+        job_title = data.get("jobTitle") or {}
+        if isinstance(job_title, dict):
+            title = job_title.get("title")
+            seniority = job_title.get("seniority")
+        else:
+            title = job_title or None
+            seniority = None
+
+        company = data.get("company") or {}
+        company_domain = (
+            (company.get("domain") if isinstance(company, dict) else None) or query.domain
+        )
+        company_size = _parse_company_size(
+            company.get("size") if isinstance(company, dict) else None
+        )
+        industry = company.get("industry") if isinstance(company, dict) else None
+
+        location = data.get("location") or {}
+        country = location.get("country") if isinstance(location, dict) else None
 
         return EnrichmentResult(
             email=email,
             email_status=email_status,
-            title=data.get("jobTitle"),
-            seniority=data.get("seniority"),
-            company_domain=data.get("companyDomain") or query.domain,
-            company_size=_parse_company_size(data.get("companySize")),
-            industry=data.get("industry"),
-            country=data.get("country"),
+            title=title,
+            seniority=seniority,
+            company_domain=company_domain,
+            company_size=company_size,
+            industry=industry,
+            country=country,
             provider=self.name,
             raw=body if isinstance(body, dict) else {},
         )
