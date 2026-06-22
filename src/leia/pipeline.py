@@ -26,7 +26,7 @@ from leia.dedupe import (
     signal_dedupe_key,
 )
 from leia.enrichment.base import Enricher, EnrichmentQuery
-from leia.enrichment.prospeo import ProspeoEnricher
+from leia.enrichment.lusha import LushaEnricher
 from leia.enrichment.stub import StubEnricher
 from leia.llm.base import Brain
 from leia.llm.client import LLMBrain
@@ -89,11 +89,11 @@ def build_components(
                     "ANTHROPIC_API_KEY is not set. Add it to .env, or use --dry-run."
                 )
             brain = LLMBrain(brain_model=app_settings.models.brain)
-        if settings.prospeo_api_key:
-            enricher = ProspeoEnricher(settings.prospeo_api_key)
+        if settings.lusha_api_key:
+            enricher = LushaEnricher(settings.lusha_api_key)
         else:
             enricher = StubEnricher()
-            notes.append("PROSPEO_API_KEY missing: falling back to stub enricher")
+            notes.append("LUSHA_API_KEY missing: falling back to stub enricher")
 
     def channel_for(channel: str) -> Channel:
         if (
