@@ -72,6 +72,9 @@ def config_check() -> None:
     settings = get_settings()
     app_settings = load_app_settings()
 
+    def _key(val: str | None) -> str:
+        return "set" if val else "[yellow]missing[/]"
+
     table = Table(title="Config OK", show_header=True, header_style="bold")
     table.add_column("Item")
     table.add_column("Value")
@@ -81,14 +84,17 @@ def config_check() -> None:
     table.add_row("Geographies", ", ".join(icp.geographies) or "-")
     table.add_row("Offer", (vp.offer[:70] + "...") if len(vp.offer) > 70 else vp.offer)
     table.add_row("Brain model", app_settings.models.brain)
-    table.add_row("Anthropic key", "set" if settings.anthropic_api_key else "[yellow]missing[/]")
-    table.add_row("Lusha key", "set" if settings.lusha_api_key else "[yellow]missing[/]")
+    table.add_row("Anthropic key", _key(settings.anthropic_api_key))
+    table.add_row("Lusha key (enrichment)", _key(settings.lusha_api_key))
+    table.add_row("Instantly key (email)", _key(settings.instantly_api_key))
+    table.add_row("Apify token (LinkedIn signals)", _key(settings.apify_token))
+    table.add_row("Unipile key (LinkedIn send)", _key(settings.unipile_api_key))
     console.print(table)
 
     if not settings.anthropic_api_key:
         console.print(
             "[yellow]Note:[/] ANTHROPIC_API_KEY is not set. Add it to .env before running "
-            "scoring/drafting (Phase 1)."
+            "scoring/drafting."
         )
 
 
@@ -97,7 +103,12 @@ def run(
     input_csv: Path = typer.Option(
         None, "--input", "-i", help="CSV of prospects (manual_csv source)."
     ),
-    source: str = typer.Option("manual_csv", help="Signal source. Phase 1: manual_csv."),
+    source: str = typer.Option(
+        "manual_csv", help="Signal source: manual_csv | apify_linkedin."
+    ),
+    dataset: str = typer.Option(
+        None, "--dataset", help="Apify dataset ID (required for apify_linkedin source)."
+    ),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Stub brain + enricher: zero spend, zero sends."
     ),
@@ -106,19 +117,41 @@ def run(
     """Run find -> enrich -> score -> draft -> queue. Drafts await your approval."""
     from leia.db import make_engine, make_session_factory, session_scope
     from leia.pipeline import build_components, run_until_queue
+    from leia.sources.apify_linkedin import ApifyLinkedInSource
+    from leia.sources.base import SignalSource
     from leia.sources.manual_csv import ManualCSVSource
 
-    if source != "manual_csv":
-        console.print(f"[red]Unknown source '{source}'. Phase 1 supports: manual_csv.[/]")
-        raise typer.Exit(code=2)
-    if input_csv is None:
-        console.print("[red]--input <prospects.csv> is required for manual_csv.[/]")
+    # ── Build source ──────────────────────────────────────────────────────
+    settings = get_settings()
+    source_obj: SignalSource
+    if source == "manual_csv":
+        if input_csv is None:
+            console.print("[red]--input <prospects.csv> is required for manual_csv.[/]")
+            raise typer.Exit(code=2)
+        source_obj = ManualCSVSource(input_csv)
+    elif source == "apify_linkedin":
+        if not dataset:
+            console.print(
+                "[red]--dataset <DATASET_ID> is required for apify_linkedin. "
+                "Run your Apify actor first and copy the dataset ID.[/]"
+            )
+            raise typer.Exit(code=2)
+        if not settings.apify_token:
+            console.print(
+                "[red]APIFY_TOKEN is not set in .env. "
+                "Add it before using the apify_linkedin source.[/]"
+            )
+            raise typer.Exit(code=1)
+        source_obj = ApifyLinkedInSource(settings.apify_token, dataset)
+    else:
+        console.print(
+            f"[red]Unknown source '{source}'. Supported: manual_csv, apify_linkedin.[/]"
+        )
         raise typer.Exit(code=2)
 
     icp = load_icp()
     vp = load_value_prop()
     guidelines = load_message_guidelines()
-    settings = get_settings()
     app_settings = load_app_settings()
 
     try:
@@ -137,7 +170,7 @@ def run(
     with session_scope(factory) as session:
         reports = run_until_queue(
             session,
-            source=ManualCSVSource(input_csv),
+            source=source_obj,
             components=components,
             icp_config=icp,
             value_prop=vp,

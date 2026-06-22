@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from leia.approval.queue import enqueue_pending
 from leia.channels.base import Channel, OutboundMessage
 from leia.channels.email_instantly import InstantlyEmailChannel
+from leia.channels.linkedin_unipile import UnipileLinkedInChannel
 from leia.channels.stub import StubChannel
 from leia.config import AppSettings, ICPConfig, Settings, ValuePropConfig
 from leia.dedupe import (
@@ -61,6 +62,7 @@ class Components:
     enricher: Enricher
     channel_for: Callable[[str], Channel]
     dry_run: bool
+    channels: tuple[str, ...] = field(default_factory=lambda: ("email",))
     notes: list[str] = field(default_factory=list)
 
 
@@ -95,6 +97,20 @@ def build_components(
             enricher = StubEnricher()
             notes.append("LUSHA_API_KEY missing: falling back to stub enricher")
 
+    # Determine which channels have real providers configured.
+    active_channels: list[str] = []
+    if not dry_run:
+        if settings.instantly_api_key and settings.instantly_campaign_id:
+            active_channels.append("email")
+        else:
+            active_channels.append("email")  # always draft email; stub if no key
+        if settings.unipile_api_key and settings.unipile_dsn:
+            active_channels.append("linkedin")
+        else:
+            notes.append("UNIPILE_API_KEY / UNIPILE_DSN missing: LinkedIn channel stubbed")
+    else:
+        active_channels = ["email", "linkedin"]  # stub both in dry-run
+
     def channel_for(channel: str) -> Channel:
         if (
             channel == "email"
@@ -105,10 +121,22 @@ def build_components(
             return InstantlyEmailChannel(
                 settings.instantly_api_key, settings.instantly_campaign_id
             )
+        if (
+            channel == "linkedin"
+            and not dry_run
+            and settings.unipile_api_key
+            and settings.unipile_dsn
+        ):
+            return UnipileLinkedInChannel(settings.unipile_api_key, settings.unipile_dsn)
         return StubChannel(channel)
 
     return Components(
-        brain=brain, enricher=enricher, channel_for=channel_for, dry_run=dry_run, notes=notes
+        brain=brain,
+        enricher=enricher,
+        channel_for=channel_for,
+        dry_run=dry_run,
+        channels=tuple(active_channels),
+        notes=notes,
     )
 
 
@@ -429,12 +457,14 @@ def run_until_queue(
     icp_config: ICPConfig,
     value_prop: ValuePropConfig,
     guidelines: str,
+    channels: tuple[str, ...] | None = None,
     account_id: str = "local",
     limit: int | None = None,
 ) -> dict:
     """ingest -> enrich -> score -> draft -> enqueue. Stops at the approval queue."""
     if components.brain is None:
         raise RuntimeError("A brain is required to run the pipeline.")
+    active_channels = channels if channels is not None else components.channels
     icp_row = ensure_icp_row(session, icp_config, account_id)
     reports: dict = {}
     reports["ingest"] = ingest(session, source, account_id)
@@ -452,7 +482,7 @@ def run_until_queue(
         value_prop,
         guidelines,
         icp_row,
-        channels=("email",),
+        channels=active_channels,
         threshold=icp_config.score_threshold,
         account_id=account_id,
         limit=limit,
