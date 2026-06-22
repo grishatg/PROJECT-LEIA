@@ -78,6 +78,24 @@ class LLMBrain:
             raise RuntimeError(f"Model returned no structured '{tool_name}' tool call")
         return schema_model.model_validate(data), resp.usage
 
+    def _usage_fields(self, usage: Any) -> dict:
+        """Token + cache counts off the Anthropic usage object, plus the call cost.
+
+        Shared by ``score`` and ``draft`` so metering lives in exactly one place.
+        ``cache_*`` are absent on older usage objects, hence the defensive getattr.
+        """
+        ti, to = usage.input_tokens, usage.output_tokens
+        cr = getattr(usage, "cache_read_input_tokens", 0) or 0
+        cw = getattr(usage, "cache_creation_input_tokens", 0) or 0
+        return {
+            "model_id": self.brain_model,
+            "tokens_in": ti,
+            "tokens_out": to,
+            "cache_read_tokens": cr,
+            "cache_write_tokens": cw,
+            "cost_usd": cost_usd(self.brain_model, ti, to, cr, cw),
+        }
+
     def score(
         self, facts: ProspectFacts, icp: ICPConfig, value_prop: ValuePropConfig
     ) -> ScoreOutput:
@@ -88,18 +106,7 @@ class LLMBrain:
             schema_model=ScoreResult,
             tool_name="record_score",
         )
-        ti, to = usage.input_tokens, usage.output_tokens
-        cr = getattr(usage, "cache_read_input_tokens", 0) or 0
-        cw = getattr(usage, "cache_creation_input_tokens", 0) or 0
-        return ScoreOutput(
-            result=result,
-            model_id=self.brain_model,
-            tokens_in=ti,
-            tokens_out=to,
-            cache_read_tokens=cr,
-            cache_write_tokens=cw,
-            cost_usd=cost_usd(self.brain_model, ti, to, cr, cw),
-        )
+        return ScoreOutput(result=result, **self._usage_fields(usage))
 
     def draft(
         self,
@@ -115,15 +122,4 @@ class LLMBrain:
             schema_model=DraftResult,
             tool_name="record_draft",
         )
-        ti, to = usage.input_tokens, usage.output_tokens
-        cr = getattr(usage, "cache_read_input_tokens", 0) or 0
-        cw = getattr(usage, "cache_creation_input_tokens", 0) or 0
-        return DraftOutput(
-            result=result,
-            model_id=self.brain_model,
-            tokens_in=ti,
-            tokens_out=to,
-            cache_read_tokens=cr,
-            cache_write_tokens=cw,
-            cost_usd=cost_usd(self.brain_model, ti, to, cr, cw),
-        )
+        return DraftOutput(result=result, **self._usage_fields(usage))

@@ -58,6 +58,16 @@ def main() -> None:
 
                 st.caption(f"Why this score: {lead.rationale}")
 
+                # Spend transparency: scoring + drafting cost for this lead, and
+                # prompt-cache token activity (only shown once caching engages).
+                spend = (lead.cost_usd or 0.0) + (draft.cost_usd or 0.0)
+                meter = f"💰 ${spend:.4f} to score + draft · {draft.model_id or 'stub'}"
+                cache_read = (lead.cache_read_tokens or 0) + (draft.cache_read_tokens or 0)
+                cache_write = (lead.cache_write_tokens or 0) + (draft.cache_write_tokens or 0)
+                if cache_read or cache_write:
+                    meter += f" · cache {cache_read:,}r / {cache_write:,}w tok"
+                st.caption(meter)
+
                 new_subject = draft.subject or ""
                 if draft.channel == "email":
                     new_subject = st.text_input(
