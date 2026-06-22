@@ -18,6 +18,8 @@ class EnrichmentQuery(BaseModel):
     company_name: str | None = None
     linkedin_url: str | None = None
     domain: str | None = None
+    # Pre-known Lusha contact ID; enables a direct V3 enrich path once confirmed.
+    lusha_id: str | None = None
 
 
 class EnrichmentResult(BaseModel):

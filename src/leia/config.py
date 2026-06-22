@@ -105,11 +105,18 @@ class PathSettings(BaseModel):
     message_guidelines: str = "config/message_guidelines.md"
 
 
+class LushaSettings(BaseModel):
+    max_prospects: int = 100
+    signals_days_back: int = 90
+    signal_types: list[str] = Field(default_factory=lambda: ["promotion", "companyChange"])
+
+
 class AppSettings(BaseModel):
     models: ModelSettings = Field(default_factory=ModelSettings)
     limits: LimitSettings = Field(default_factory=LimitSettings)
     scoring: ScoringSettings = Field(default_factory=ScoringSettings)
     paths: PathSettings = Field(default_factory=PathSettings)
+    lusha: LushaSettings = Field(default_factory=LushaSettings)
 
 
 # ── Loaders ────────────────────────────────────────────────────────────────

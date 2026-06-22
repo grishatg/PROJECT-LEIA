@@ -24,3 +24,11 @@ use_prefilter = false
 icp = "config/icp.yaml"
 value_prop = "config/value_prop.yaml"
 message_guidelines = "config/message_guidelines.md"
+
+[lusha]
+# Max contacts to fetch per prospecting/signals run (a safety brake on credit spend).
+max_prospects = 100
+# How many days back to look for signal events (promotions, company changes).
+signals_days_back = 90
+# Signal types to filter on. Run `leia config-check` to see valid values from Lusha.
+signal_types = ["promotion", "companyChange"]

@@ -112,7 +112,23 @@ def build_components(
     )
 
 
-def build_facts(prospect: Prospect) -> ProspectFacts:
+def _get_signal_summary(session: Session, prospect: Prospect) -> str | None:
+    """Look up the prospect's origin signal and return a human-readable summary
+    of any Lusha intent-signal events, or None if no signals were recorded."""
+    if not prospect.origin_signal_id:
+        return None
+    sig = session.get(Signal, prospect.origin_signal_id)
+    if sig is None:
+        return None
+    signal_types: list[str] = sig.raw_json.get("signals") or []
+    if not signal_types:
+        return None
+    start_date: str = sig.raw_json.get("signal_start_date", "")
+    label = ", ".join(signal_types)
+    return f"Recent signal: {label}" + (f" (since {start_date})" if start_date else "")
+
+
+def build_facts(prospect: Prospect, signal_summary: str | None = None) -> ProspectFacts:
     ec = prospect.enrichment
     return ProspectFacts(
         full_name=prospect.full_name,
@@ -123,7 +139,7 @@ def build_facts(prospect: Prospect) -> ProspectFacts:
         industry=getattr(ec, "industry", None),
         country=getattr(ec, "country", None),
         company_size=getattr(ec, "company_size", None),
-        signal_summary=None,
+        signal_summary=signal_summary,
     )
 
 
@@ -295,7 +311,7 @@ def score(
             )
         ).scalar_one_or_none():
             continue
-        out = brain.score(build_facts(p), icp_config, value_prop)
+        out = brain.score(build_facts(p, _get_signal_summary(session, p)), icp_config, value_prop)
         session.add(
             ScoredLead(
                 account_id=account_id,
@@ -341,7 +357,7 @@ def draft(
     cost = 0.0
     for lead in session.execute(q).scalars().all():
         prospect = session.get(Prospect, lead.prospect_id)
-        facts = build_facts(prospect)
+        facts = build_facts(prospect, _get_signal_summary(session, prospect))
         for ch in channels:
             if session.execute(
                 select(DraftMessage).where(

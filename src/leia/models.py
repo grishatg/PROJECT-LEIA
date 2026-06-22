@@ -46,6 +46,8 @@ class SignalSource:
     MANUAL_CSV = "manual_csv"
     APIFY_LINKEDIN = "apify_linkedin"
     JOBCHANGE = "jobchange"
+    LUSHA_PROSPECTING = "lusha_prospecting"
+    LUSHA_SIGNALS = "lusha_signals"
 
 
 class SignalStatus:
