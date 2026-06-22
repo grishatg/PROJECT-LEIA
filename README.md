@@ -6,8 +6,9 @@ LinkedIn outreach — then puts every message in a **review queue so you approve
 sends**. Inspired by tools like Gojiberry.ai, but yours to own, customize, and (eventually)
 sell.
 
-> **Status:** Phase 1 complete — the full email pipeline runs end-to-end with a manual-approval
-> gate. Next up: the LinkedIn channel + real intent signals (Phase 2).
+> **Status:** Phases 0–2 integrated. The pipeline runs end-to-end behind a manual-approval gate
+> with **four lead sources** (manual CSV, Lusha prospecting, Lusha intent signals, Apify/LinkedIn)
+> and **two outreach channels** (Instantly email + Unipile LinkedIn). 96 offline tests pass.
 
 ## The pipeline
 
@@ -51,11 +52,25 @@ uv run leia config-check
 | Service | What for | Notes |
 |---|---|---|
 | **Anthropic API key** | The brain (scoring + drafting) | Pay-as-you-go; set a spend cap. Separate from Claude Max. |
-| **Prospeo** | Enrichment (find emails) | Cheaper-than-Apollo; swap in one file if you prefer Dropcontact/Snov.io/Hunter. |
+| **Lusha** | Enrichment + prospecting + intent signals | Powers email/firmographic lookup and the `lusha_prospecting` / `lusha_signals` sources. Swap in one file if you prefer another provider. |
 | **Instantly** | Cold-email sending | Use a *spare* sending domain; let warmup run before real volume. |
-| Apify + Unipile | LinkedIn (Phase 2) | Add later. |
+| Apify | LinkedIn prospect source | Run a LinkedIn scraper actor, pass its dataset id via `--dataset`. Optional. |
+| Unipile | LinkedIn sending | Connect a LinkedIn account; sends connection-request notes (≤300 chars). Optional. |
 
 See `CLAUDE.md` for the full build plan and architecture.
+
+## Lead sources
+
+Choose a source with `leia run --source <name>`:
+
+| Source | Flag | Needs |
+|---|---|---|
+| `manual_csv` | `--input prospects.csv` | nothing (works offline) |
+| `lusha_prospecting` | — | `LUSHA_API_KEY` + `config/icp.yaml` filters |
+| `lusha_signals` | — | `LUSHA_API_KEY` (returns only contacts with recent buying-intent events) |
+| `apify_linkedin` | `--dataset <ID>` | `APIFY_TOKEN` + a LinkedIn-scraper dataset |
+
+Every source supports `--dry-run` (deterministic stubs, zero spend, zero sends).
 
 ## Project layout
 
@@ -70,5 +85,5 @@ data/        local SQLite DB (gitignored) + sample fixtures
 
 ## Cost (rough, monthly)
 
-Prospeo ~$39 + Anthropic ~$5–20 + Instantly ~$30–37 ≈ **$75–95** for the email MVP. Claude is
+Lusha ~$40 + Anthropic ~$5–20 + Instantly ~$30–37 ≈ **$75–95** for the email MVP. Claude is
 the *smallest* line item. This isn't about saving money month one — it's about owning the stack.
