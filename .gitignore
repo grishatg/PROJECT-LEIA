@@ -1,0 +1,32 @@
+# Secrets — never commit real credentials
+.env
+.claude/settings.local.json
+
+# Local database & runtime data (keep fixtures, ignore the live DB)
+data/*.db
+data/*.db-journal
+data/*.sqlite3
+
+# Git bundles and patches (portable artifacts, not source)
+*.bundle
+*.patch
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store

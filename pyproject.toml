@@ -1,0 +1,54 @@
+[project]
+name = "project-leia"
+version = "0.1.0"
+description = "PROJECT-LEIA - a personal AI lead-generation agent: find, enrich, score, and draft personalized outreach behind a human-approval gate."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "anthropic>=0.39",
+    "sqlalchemy>=2.0",
+    "alembic>=1.13",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "pyyaml>=6.0",
+    "typer>=0.12",
+    "python-dotenv>=1.0",
+    "rich>=13.0",
+    "httpx>=0.27",
+    "streamlit>=1.40",
+]
+
+[project.scripts]
+leia = "leia.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/leia"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+# Alembic writes migration files in its own style; don't lint generated migrations.
+extend-exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.flake8-bugbear]
+# Typer's API intentionally uses these as argument defaults.
+extend-immutable-calls = ["typer.Option", "typer.Argument"]
