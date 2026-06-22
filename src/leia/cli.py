@@ -82,7 +82,7 @@ def config_check() -> None:
     table.add_row("Offer", (vp.offer[:70] + "...") if len(vp.offer) > 70 else vp.offer)
     table.add_row("Brain model", app_settings.models.brain)
     table.add_row("Anthropic key", "set" if settings.anthropic_api_key else "[yellow]missing[/]")
-    table.add_row("Prospeo key", "set" if settings.prospeo_api_key else "[yellow]missing[/]")
+    table.add_row("Lusha key", "set" if settings.lusha_api_key else "[yellow]missing[/]")
     console.print(table)
 
     if not settings.anthropic_api_key:
