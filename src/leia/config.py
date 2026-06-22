@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     prospeo_api_key: str | None = None
     instantly_api_key: str | None = None
+    instantly_campaign_id: str | None = None
     apify_token: str | None = None
     unipile_api_key: str | None = None
     unipile_dsn: str | None = None

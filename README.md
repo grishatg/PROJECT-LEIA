@@ -6,8 +6,8 @@ LinkedIn outreach — then puts every message in a **review queue so you approve
 sends**. Inspired by tools like Gojiberry.ai, but yours to own, customize, and (eventually)
 sell.
 
-> **Status:** Phase 0 — project scaffold, data model, config, and test harness. The full
-> find → enrich → score → draft → approve → send pipeline arrives in Phase 1.
+> **Status:** Phase 1 complete — the full email pipeline runs end-to-end with a manual-approval
+> gate. Next up: the LinkedIn channel + real intent signals (Phase 2).
 
 ## The pipeline
 
@@ -16,6 +16,19 @@ ingest → dedupe → enrich → score (Claude) → draft (Claude) → approval 
 ```
 
 Each stage is a discrete, testable step. Nothing is sent without your approval.
+
+## Try it now (no API keys, no cost)
+
+```bash
+uv sync
+uv run leia init-db
+# Dry-run uses stub providers: zero spend, zero sends.
+uv run leia run --dry-run --input data/fixtures/contacts.sample.csv
+uv run leia dashboard        # review the drafts, click Approve
+uv run leia send --dry-run   # "sends" only what you approved (stubbed)
+```
+
+Then add your real keys to `.env`, drop `--dry-run`, and point `--input` at your own CSV.
 
 ## Quick start
 

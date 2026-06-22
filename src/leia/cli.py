@@ -1,10 +1,11 @@
 """The ``leia`` command-line interface.
 
-Phase 0 ships: version, init-db, config-check. The pipeline commands (run,
-dashboard) are stubs that point at Phase 1.
+Commands: version, init-db, config-check, run, send, dashboard.
 """
 
 from __future__ import annotations
+
+from pathlib import Path
 
 import typer
 from rich.console import Console
@@ -93,19 +94,121 @@ def config_check() -> None:
 
 @app.command()
 def run(
-    dry_run: bool = typer.Option(False, "--dry-run", help="Stub all sends; nothing leaves."),
+    input_csv: Path = typer.Option(
+        None, "--input", "-i", help="CSV of prospects (manual_csv source)."
+    ),
+    source: str = typer.Option("manual_csv", help="Signal source. Phase 1: manual_csv."),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Stub brain + enricher: zero spend, zero sends."
+    ),
+    limit: int = typer.Option(None, help="Max prospects to process this run."),
 ) -> None:
-    """Run the find -> enrich -> score -> draft -> approve pipeline (Phase 1)."""
-    console.print(
-        "[yellow]The pipeline arrives in Phase 1.[/] Phase 0 built the foundation: "
-        "run [bold]leia init-db[/] and [bold]leia config-check[/]."
+    """Run find -> enrich -> score -> draft -> queue. Drafts await your approval."""
+    from leia.db import make_engine, make_session_factory, session_scope
+    from leia.pipeline import build_components, run_until_queue
+    from leia.sources.manual_csv import ManualCSVSource
+
+    if source != "manual_csv":
+        console.print(f"[red]Unknown source '{source}'. Phase 1 supports: manual_csv.[/]")
+        raise typer.Exit(code=2)
+    if input_csv is None:
+        console.print("[red]--input <prospects.csv> is required for manual_csv.[/]")
+        raise typer.Exit(code=2)
+
+    icp = load_icp()
+    vp = load_value_prop()
+    guidelines = load_message_guidelines()
+    settings = get_settings()
+    app_settings = load_app_settings()
+
+    try:
+        components = build_components(
+            dry_run=dry_run, settings=settings, app_settings=app_settings
+        )
+    except RuntimeError as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(code=1) from e
+
+    for note in components.notes:
+        console.print(f"[yellow]note:[/] {note}")
+
+    engine = make_engine()
+    factory = make_session_factory(engine)
+    with session_scope(factory) as session:
+        reports = run_until_queue(
+            session,
+            source=ManualCSVSource(input_csv),
+            components=components,
+            icp_config=icp,
+            value_prop=vp,
+            guidelines=guidelines,
+            limit=limit,
+        )
+
+    table = Table(title="Pipeline run", show_header=True, header_style="bold")
+    table.add_column("Stage")
+    table.add_column("Result")
+    table.add_row(
+        "ingest",
+        f"{reports['ingest']['signals']} signals, {reports['ingest']['prospects']} prospects",
     )
+    table.add_row(
+        "enrich",
+        f"{reports['enrich']['enriched']} with email, {reports['enrich']['failed']} without",
+    )
+    table.add_row("score", f"{reports['score']['scored']} scored")
+    table.add_row("draft", f"{reports['draft']['drafted']} drafts")
+    table.add_row("queue", f"{reports['enqueue']['queued']} awaiting your approval")
+    table.add_row("Claude cost", f"${reports['total_cost_usd']:.4f}")
+    console.print(table)
+    console.print("Review and approve in the dashboard: [bold]leia dashboard[/]")
 
 
 @app.command()
-def dashboard() -> None:
-    """Launch the Streamlit approval queue (Phase 1)."""
-    console.print("[yellow]The Streamlit approval dashboard arrives in Phase 1.[/]")
+def send(
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Stub channel: nothing actually leaves."
+    ),
+) -> None:
+    """Send the drafts you've APPROVED. Nothing else is touched."""
+    from leia.db import make_engine, make_session_factory, session_scope
+    from leia.pipeline import build_components, send_approved
+
+    settings = get_settings()
+    app_settings = load_app_settings()
+    components = build_components(
+        dry_run=dry_run, settings=settings, app_settings=app_settings, require_brain=False
+    )
+    for note in components.notes:
+        console.print(f"[yellow]note:[/] {note}")
+
+    engine = make_engine()
+    factory = make_session_factory(engine)
+    with session_scope(factory) as session:
+        report = send_approved(
+            session, components.channel_for, daily_cap=app_settings.limits.daily_send_cap
+        )
+    sent = report.counts.get("sent", 0)
+    failed = report.counts.get("failed", 0)
+    console.print(f"[green]sent[/] {sent}   [red]failed[/] {failed}")
+    if dry_run:
+        console.print("[yellow](dry-run: stub channel — nothing actually left the building)[/]")
+
+
+@app.command()
+def dashboard(
+    port: int = typer.Option(8501, help="Port for the Streamlit app."),
+) -> None:
+    """Launch the Streamlit approval queue in your browser."""
+    import subprocess
+    import sys
+
+    app_path = Path(__file__).resolve().parents[2] / "app" / "dashboard.py"
+    console.print(f"[green]Launching dashboard[/] at http://localhost:{port} (Ctrl+C to stop)")
+    subprocess.run(  # noqa: S603 - launching our own bundled Streamlit app
+        [sys.executable, "-m", "streamlit", "run", str(app_path), "--server.port", str(port)],
+        check=False,
+    )
 
 
 if __name__ == "__main__":
