@@ -72,6 +72,9 @@ def config_check() -> None:
     settings = get_settings()
     app_settings = load_app_settings()
 
+    def _key(val: str | None) -> str:
+        return "set" if val else "[yellow]missing[/]"
+
     table = Table(title="Config OK", show_header=True, header_style="bold")
     table.add_column("Item")
     table.add_column("Value")
@@ -81,18 +84,21 @@ def config_check() -> None:
     table.add_row("Geographies", ", ".join(icp.geographies) or "-")
     table.add_row("Offer", (vp.offer[:70] + "...") if len(vp.offer) > 70 else vp.offer)
     table.add_row("Brain model", app_settings.models.brain)
-    table.add_row("Anthropic key", "set" if settings.anthropic_api_key else "[yellow]missing[/]")
-    table.add_row("Lusha key", "set" if settings.lusha_api_key else "[yellow]missing[/]")
+    table.add_row("Anthropic key", _key(settings.anthropic_api_key))
+    table.add_row("Lusha key (enrichment)", _key(settings.lusha_api_key))
+    table.add_row("Instantly key (email)", _key(settings.instantly_api_key))
+    table.add_row("Apify token (LinkedIn signals)", _key(settings.apify_token))
+    table.add_row("Unipile key (LinkedIn send)", _key(settings.unipile_api_key))
     console.print(table)
 
     if not settings.anthropic_api_key:
         console.print(
             "[yellow]Note:[/] ANTHROPIC_API_KEY is not set. Add it to .env before running "
-            "scoring/drafting (Phase 1)."
+            "scoring/drafting."
         )
 
 
-_VALID_SOURCES = ("manual_csv", "lusha_prospecting", "lusha_signals")
+_VALID_SOURCES = ("manual_csv", "lusha_prospecting", "lusha_signals", "apify_linkedin")
 
 
 @app.command()
@@ -103,6 +109,9 @@ def run(
     source: str = typer.Option(
         "manual_csv",
         help=f"Signal source: {', '.join(_VALID_SOURCES)}.",
+    ),
+    dataset: str = typer.Option(
+        None, "--dataset", help="Apify dataset ID (required for apify_linkedin source)."
     ),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Stub brain + enricher: zero spend, zero sends."
@@ -135,6 +144,23 @@ def run(
             console.print("[red]--input <prospects.csv> is required for manual_csv.[/]")
             raise typer.Exit(code=2)
         signal_source = ManualCSVSource(input_csv)
+
+    elif source == "apify_linkedin":
+        if not dataset:
+            console.print(
+                "[red]--dataset <DATASET_ID> is required for apify_linkedin. "
+                "Run your Apify actor first and copy the dataset ID.[/]"
+            )
+            raise typer.Exit(code=2)
+        if not settings.apify_token:
+            console.print(
+                "[red]APIFY_TOKEN is not set in .env. "
+                "Add it before using the apify_linkedin source.[/]"
+            )
+            raise typer.Exit(code=1)
+        from leia.sources.apify_linkedin import ApifyLinkedInSource
+
+        signal_source = ApifyLinkedInSource(settings.apify_token, dataset)
 
     elif source == "lusha_prospecting":
         if dry_run:
