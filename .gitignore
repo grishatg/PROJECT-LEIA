@@ -1,5 +1,6 @@
 # Secrets — never commit real credentials
 .env
+.claude/settings.local.json
 
 # Local database & runtime data (keep fixtures, ignore the live DB)
 data/*.db
