@@ -92,12 +92,18 @@ def config_check() -> None:
         )
 
 
+_VALID_SOURCES = ("manual_csv", "lusha_prospecting", "lusha_signals")
+
+
 @app.command()
 def run(
     input_csv: Path = typer.Option(
-        None, "--input", "-i", help="CSV of prospects (manual_csv source)."
+        None, "--input", "-i", help="CSV of prospects (manual_csv source only)."
     ),
-    source: str = typer.Option("manual_csv", help="Signal source. Phase 1: manual_csv."),
+    source: str = typer.Option(
+        "manual_csv",
+        help=f"Signal source: {', '.join(_VALID_SOURCES)}.",
+    ),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Stub brain + enricher: zero spend, zero sends."
     ),
@@ -106,13 +112,12 @@ def run(
     """Run find -> enrich -> score -> draft -> queue. Drafts await your approval."""
     from leia.db import make_engine, make_session_factory, session_scope
     from leia.pipeline import build_components, run_until_queue
-    from leia.sources.manual_csv import ManualCSVSource
+    from leia.sources.base import SignalSource as SignalSourceProto
 
-    if source != "manual_csv":
-        console.print(f"[red]Unknown source '{source}'. Phase 1 supports: manual_csv.[/]")
-        raise typer.Exit(code=2)
-    if input_csv is None:
-        console.print("[red]--input <prospects.csv> is required for manual_csv.[/]")
+    if source not in _VALID_SOURCES:
+        console.print(
+            f"[red]Unknown source '{source}'. Valid options: {', '.join(_VALID_SOURCES)}.[/]"
+        )
         raise typer.Exit(code=2)
 
     icp = load_icp()
@@ -120,6 +125,54 @@ def run(
     guidelines = load_message_guidelines()
     settings = get_settings()
     app_settings = load_app_settings()
+
+    # ── Build the signal source ────────────────────────────────────────────
+    signal_source: SignalSourceProto
+    if source == "manual_csv":
+        from leia.sources.manual_csv import ManualCSVSource
+
+        if input_csv is None:
+            console.print("[red]--input <prospects.csv> is required for manual_csv.[/]")
+            raise typer.Exit(code=2)
+        signal_source = ManualCSVSource(input_csv)
+
+    elif source == "lusha_prospecting":
+        if dry_run:
+            from leia.sources.lusha_stub import StubLushaProspectingSource
+
+            signal_source = StubLushaProspectingSource()
+        else:
+            if not settings.lusha_api_key:
+                console.print("[red]LUSHA_API_KEY is required for lusha_prospecting.[/]")
+                raise typer.Exit(code=1)
+            from leia.sources.lusha import LushaProspectingSource
+
+            signal_source = LushaProspectingSource(
+                settings.lusha_api_key,
+                icp,
+                max_results=app_settings.lusha.max_prospects,
+            )
+
+    else:  # lusha_signals
+        if dry_run:
+            from leia.sources.lusha_stub import StubLushaSignalsSource
+
+            signal_source = StubLushaSignalsSource(
+                signal_types=app_settings.lusha.signal_types
+            )
+        else:
+            if not settings.lusha_api_key:
+                console.print("[red]LUSHA_API_KEY is required for lusha_signals.[/]")
+                raise typer.Exit(code=1)
+            from leia.sources.lusha import LushaSignalsSource
+
+            signal_source = LushaSignalsSource(
+                settings.lusha_api_key,
+                icp,
+                days_back=app_settings.lusha.signals_days_back,
+                signal_types=app_settings.lusha.signal_types,
+                max_results=app_settings.lusha.max_prospects,
+            )
 
     try:
         components = build_components(
@@ -137,7 +190,7 @@ def run(
     with session_scope(factory) as session:
         reports = run_until_queue(
             session,
-            source=ManualCSVSource(input_csv),
+            source=signal_source,
             components=components,
             icp_config=icp,
             value_prop=vp,
