@@ -10,7 +10,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from leia.config import CompanySize, ICPConfig
-from leia.sources.lusha import LushaProspectingSource, LushaSignalsSource, _icp_base_payload
+from leia.sources.lusha import (
+    LushaProspectingSource,
+    LushaSignalsSource,
+    _icp_base_payload,
+    _size_buckets,
+)
 from leia.sources.lusha_stub import StubLushaProspectingSource, StubLushaSignalsSource
 
 
@@ -31,42 +36,74 @@ def icp() -> ICPConfig:
 # ── Payload builder ────────────────────────────────────────────────────────
 
 
+def _include(payload: dict) -> dict:
+    return payload["filters"]["contacts"]["include"]
+
+
 def test_icp_base_payload_titles(icp):
     payload = _icp_base_payload(icp, page=0, page_size=25)
-    assert payload["jobTitles"] == ["Head of Procurement", "Energy Manager"]
+    assert _include(payload)["jobTitles"] == ["Head of Procurement", "Energy Manager"]
 
 
 def test_icp_base_payload_countries(icp):
     payload = _icp_base_payload(icp, page=0, page_size=25)
-    assert set(payload["countries"]) == {"GB", "IE"}
+    countries = {loc["country"] for loc in _include(payload)["locations"]}
+    assert countries == {"United Kingdom", "Ireland"}
 
 
 def test_icp_base_payload_size(icp):
+    # min=50, max=5000 overlaps Lusha buckets 11-50 through 1001-5000.
     payload = _icp_base_payload(icp, page=0, page_size=25)
-    assert payload["sizesFilterOption"] == [{"min": 50, "max": 5000}]
+    assert payload["filters"]["companies"]["include"]["sizes"] == [
+        {"min": 11, "max": 50},
+        {"min": 51, "max": 200},
+        {"min": 201, "max": 500},
+        {"min": 501, "max": 1000},
+        {"min": 1001, "max": 5000},
+    ]
 
 
-def test_icp_base_payload_search_text_contains_industry(icp):
+def test_size_buckets_overlap():
+    assert _size_buckets(50, 5000) == [
+        {"min": 11, "max": 50},
+        {"min": 51, "max": 200},
+        {"min": 201, "max": 500},
+        {"min": 501, "max": 1000},
+        {"min": 1001, "max": 5000},
+    ]
+    # Open-ended top bucket has no max.
+    assert {"min": 10001} in _size_buckets(20000, None)
+    # A tiny range maps to a single bucket.
+    assert _size_buckets(60, 90) == [{"min": 51, "max": 200}]
+
+
+def test_icp_base_payload_requires_work_email(icp):
     payload = _icp_base_payload(icp, page=0, page_size=25)
-    assert "Renewable energy" in payload["searchText"]
+    assert _include(payload)["existingDataPoints"] == ["work_email"]
 
 
 def test_icp_base_payload_pagination(icp):
     payload = _icp_base_payload(icp, page=2, page_size=20)
-    assert payload["page"] == 2
-    assert payload["page_size"] == 20
+    assert payload["pagination"]["page"] == 2
+    assert payload["pagination"]["size"] == 20
 
 
 def test_icp_base_payload_no_size_when_unset():
     icp_no_size = ICPConfig(name="X", titles=["CEO"], geographies=["UK"])
     payload = _icp_base_payload(icp_no_size, page=0, page_size=25)
-    assert "sizesFilterOption" not in payload
+    assert "companies" not in payload["filters"]
 
 
 def test_icp_base_payload_unknown_geo_skipped():
     icp_unknown = ICPConfig(name="X", geographies=["Narnia", "United Kingdom"])
     payload = _icp_base_payload(icp_unknown, page=0, page_size=25)
-    assert payload["countries"] == ["GB"]
+    assert _include(payload)["locations"] == [{"country": "United Kingdom"}]
+
+
+def test_icp_base_payload_uk_aliases_dedupe():
+    icp_dupes = ICPConfig(name="X", geographies=["UK", "England", "Scotland"])
+    payload = _icp_base_payload(icp_dupes, page=0, page_size=25)
+    assert _include(payload)["locations"] == [{"country": "United Kingdom"}]
 
 
 # ── LushaProspectingSource ─────────────────────────────────────────────────
@@ -75,7 +112,7 @@ def test_icp_base_payload_unknown_geo_skipped():
 def _make_response(contacts: list[dict], status_code: int = 200) -> MagicMock:
     mock = MagicMock()
     mock.status_code = status_code
-    mock.json.return_value = {"data": {"contacts": contacts}}
+    mock.json.return_value = {"results": contacts}
     mock.raise_for_status = MagicMock()
     return mock
 
@@ -84,10 +121,10 @@ _SAMPLE_CONTACT = {
     "id": "v1.abc123",
     "firstName": "Jane",
     "lastName": "Smith",
-    "jobTitle": "Head of Procurement",
-    "companyName": "Acme Energy",
-    "linkedinUrl": "https://linkedin.com/in/janesmith",
-    "companyDomain": "acmeenergy.com",
+    "jobTitle": {"title": "Head of Procurement", "seniority": "director"},
+    "company": {"name": "Acme Energy", "domain": "acmeenergy.com"},
+    "socialLinks": {"linkedin": "https://linkedin.com/in/janesmith"},
+    "location": {"country": "United Kingdom"},
 }
 
 
