@@ -128,6 +128,24 @@ def test_export_prospects_csv(client):
     assert len(lines) == 6  # header + 5 sample prospects
 
 
+def test_prospects_list_after_run(client):
+    _run_dry(client)
+    rows = client.get("/api/prospects").json()
+    assert len(rows) == 5  # all 5 sample prospects appear
+    assert all("score" in r and "initials" in r and "status" in r for r in rows)
+    scored = [r for r in rows if r["score"] is not None]
+    assert scored == sorted(scored, key=lambda r: r["score"], reverse=True)  # best first
+
+
+def test_prospect_detail(client):
+    _run_dry(client)
+    pid = client.get("/api/prospects").json()[0]["id"]
+    detail = client.get(f"/api/prospects/{pid}").json()
+    assert detail["full_name"]
+    assert "outreach" in detail and "pending" in detail and "matched_criteria" in detail
+    assert client.get("/api/prospects/does-not-exist").status_code == 404
+
+
 def test_stats_shape(client):
     _run_dry(client)
     stats = client.get("/api/stats").json()

@@ -3,24 +3,33 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Log in · PROJECT-LEIA</title>
-  <link rel="stylesheet" href="/static/style.css?v=ee-1" />
+  <title>Sign in · leia</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,16..72,400;1,16..72,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css?v=ds-1" />
+  <style>
+    .login-body { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+    .login-card { width:380px; max-width:100%; box-shadow:var(--frame-shadow); }
+    .login-card .brand { justify-content:center; padding:4px 0 6px; }
+    .login-card form { margin-top:18px; }
+    .login-card input { width:100%; margin-bottom:12px; padding:12px 13px; border:1px solid var(--border);
+      border-radius:var(--r-sm); background:var(--surface); color:var(--ink); font:400 14px/1.5 'Hanken Grotesk'; }
+    .login-card input:focus { outline:none; border-color:var(--amber); box-shadow:0 0 0 3px var(--amber-tint); }
+  </style>
 </head>
 <body class="login-body">
   <div class="login-card card">
-    <div class="brand" style="justify-content:center">
-      <div class="brand-mark">L</div>
-      <div class="brand-text">LEIA<span>lead-gen agent</span></div>
-    </div>
-    <p class="sub" style="text-align:center">Sign in to your control center</p>
+    <div class="brand"><span class="brand-dot"></span><span class="brand-name">leia</span></div>
+    <p class="sub" style="text-align:center">Sign in to your prospecting companion.</p>
     <form id="login-form">
       <input type="email" id="email" placeholder="Email" autocomplete="username" required />
       <input type="password" id="password" placeholder="Password" autocomplete="current-password" required />
-      <button class="btn primary" type="submit" style="width:100%">Log in</button>
+      <button class="btn primary full" type="submit">Sign in</button>
     </form>
-    <div class="result" id="login-msg"></div>
+    <div class="result" id="login-msg" style="text-align:center"></div>
   </div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/static/login.js?v=ee-1"></script>
+  <script src="/static/login.js?v=ds-1"></script>
 </body>
 </html>
