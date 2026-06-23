@@ -1,10 +1,10 @@
 "use strict";
 
-const $ = (sel) => document.querySelector(sel);
-const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const esc = (s) =>
+  String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-// Supabase auth state (set during boot). When auth is disabled (local mode),
-// SB stays null and requests go out without a token.
 let SB = null;
 let AUTH_ENABLED = false;
 
@@ -24,7 +24,7 @@ async function api(path, method = "GET", body) {
     throw new Error("Please log in again");
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.detail || ("Request failed: " + res.status));
+  if (!res.ok) throw new Error(data.detail || "Request failed: " + res.status);
   return data;
 }
 
@@ -35,267 +35,420 @@ function toast(msg, isError = false) {
   setTimeout(() => (t.className = "toast"), 2600);
 }
 
-// Render any <i data-lucide> placeholders added to the DOM.
-const icons = () => window.lucide && window.lucide.createIcons();
+function initials(name) {
+  const parts = String(name || "").split(/\s+/).filter(Boolean);
+  if (!parts.length) return "?";
+  return (parts.length === 1 ? parts[0].slice(0, 2) : parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
 
-// ── Navigation ────────────────────────────────────────────────────────────
+// ── Lead-score component (design system v1.0) ───────────────────────────────
+function tierInfo(score) {
+  const s = Number(score) || 0;
+  if (s >= 85) return { word: "Excellent fit", seg: "", wordLow: false, band: "A" };
+  if (s >= 70) return { word: "Strong", seg: "", wordLow: false, band: "A" };
+  if (s >= 55) return { word: "Worth a look", seg: "mid", wordLow: true, band: "B" };
+  return { word: "Low", seg: "low", wordLow: true, band: "C" };
+}
+function segsHtml(score, sizeCls = "") {
+  const { seg } = tierInfo(score);
+  const filled = Math.max(0, Math.min(5, Math.round((Number(score) || 0) / 20))); // round per DS examples
+  let h = `<div class="segs ${sizeCls}">`;
+  for (let i = 0; i < 5; i++) h += `<span class="seg ${i < filled ? "on " + seg : ""}"></span>`;
+  return h + "</div>";
+}
+function scoreBlock(score) {
+  const t = tierInfo(score);
+  return `<div class="score-head"><span class="score-num">${score ?? "—"}</span>
+    <span class="score-tier ${t.wordLow ? "low" : ""}">${t.word}</span></div>${segsHtml(score)}`;
+}
+function miniScore(score) {
+  const t = tierInfo(score);
+  const pct = Math.max(0, Math.min(100, Number(score) || 0));
+  return `<div class="score-mini">
+    <div class="score-head" style="margin-bottom:5px"><span class="score-num sm">${score ?? "—"}</span>
+      <span class="score-tier sm ${t.wordLow ? "low" : ""}">${t.word}</span></div>
+    <div class="bar-track"><div class="bar-fill ${t.seg}" style="width:${pct}%"></div></div></div>`;
+}
+const avatarHue = (i) => ["", "slate", "neutral"][i % 3];
+
+// ── Theme ───────────────────────────────────────────────────────────────────
+function applyTheme(mode) {
+  document.documentElement.setAttribute("data-theme", mode);
+  localStorage.setItem("leia-theme", mode);
+}
+$("#btn-theme").addEventListener("click", () =>
+  applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark")
+);
+
+// ── Navigation ───────────────────────────────────────────────────────────────
 function showView(name) {
-  $$(".nav-item").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
+  $$(".nav-item[data-view]").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
   $$(".view").forEach((v) => v.classList.toggle("active", v.id === "view-" + name));
-  if (name === "dashboard") loadDashboard();
-  if (name === "review") loadReview();
+  if (name === "today") loadToday();
+  if (name === "prospects") loadProspects();
+  if (name === "outreach") loadOutreach();
+  if (name === "analytics") loadAnalytics();
   if (name === "settings") loadIcp();
 }
-$$(".nav-item").forEach((b) => b.addEventListener("click", () => showView(b.dataset.view)));
+document.addEventListener("click", (e) => {
+  const el = e.target.closest("[data-view]");
+  if (el) showView(el.dataset.view);
+});
 
-// ── Dashboard ───────────────────────────────────────────────────────────────
-const TILE_DEFS = [
-  { key: "prospects", icon: "users", label: "Prospects fetched" },
-  { key: "enriched", icon: "sparkles", label: "Enriched" },
-  { key: "queued", icon: "file-pen-line", label: "Drafts queued" },
-  { key: "approved", icon: "circle-check", label: "Approved" },
-  { key: "sent", icon: "send", label: "Sent" },
-  { key: "spend_usd", icon: "wallet", label: "Claude spend", money: true },
-];
+// ── Today ─────────────────────────────────────────────────────────────────────
+let TODAY_MODE = "a";
+function spark(values) {
+  const max = Math.max(1, ...values);
+  const n = values.length || 1;
+  const pts = values.map((v, i) => `${(2 + i * (74 / (n - 1 || 1))).toFixed(0)} ${(28 - (v / max) * 23).toFixed(0)}`);
+  return `<svg class="spark" viewBox="0 0 78 30" fill="none"><path d="M${pts.join(" L")}"/></svg>`;
+}
 
-async function loadDashboard() {
+async function loadToday() {
   try {
-    const [st, stats, hist] = await Promise.all([
-      api("/api/status"),
-      api("/api/stats"),
-      api("/api/history"),
+    const [st, stats, approvals, hist] = await Promise.all([
+      api("/api/status"), api("/api/stats"), api("/api/approvals"), api("/api/history"),
     ]);
-    renderTiles(st);
-    renderKeys(st.keys);
-    $("#nav-pending").textContent = st.tiles.queued;
-    renderChart(stats);
-    renderHistory(hist);
+    setPending(approvals.length);
+    const hour = new Date().getHours();
+    $("#today-greeting").textContent =
+      (hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening") +
+      (window.LEIA_NAME ? ", " + window.LEIA_NAME : "");
+    $("#today-date").textContent = new Date().toLocaleDateString("en-GB", {
+      weekday: "long", day: "numeric", month: "long",
+    });
+
+    const cards = [
+      { label: "To contact today", num: st.tiles.queued, spark: stats.drafted, delta: "in your review queue", flat: true },
+      { label: "Replies waiting", num: 0, delta: "soon — needs reply tracking", flat: true },
+      { label: "Meetings booked", num: 0, delta: "soon — Phase 2 booking", flat: true },
+    ];
+    $("#today-stats").innerHTML = cards
+      .map(
+        (c) => `<div class="stat"><div class="stat-label">${c.label}</div>
+        <div class="stat-row"><div class="stat-num">${c.num}</div>${c.spark ? spark(c.spark) : ""}</div>
+        <div class="stat-delta ${c.flat ? "flat" : ""}">${c.delta}</div></div>`
+      )
+      .join("");
+
+    // Contact today — the pending review drafts, highest score first.
+    const list = [...approvals].sort((a, b) => (b.score || 0) - (a.score || 0)).slice(0, 6);
+    $("#contact-today").innerHTML = list.length
+      ? list
+          .map(
+            (c, i) => `<div class="row click" data-go-outreach="1">
+        <span class="avatar ${avatarHue(i)}" style="width:38px;height:38px">${esc(c.initials)}</span>
+        <div class="grow"><div class="who">${esc(c.full_name)}</div>
+          <div class="meta">${esc([c.headline, c.company_name].filter(Boolean).join(" · ")) || "—"}</div></div>
+        ${miniScore(c.score)}
+        <button class="btn inline" data-go-outreach="1">Review</button></div>`
+          )
+          .join("")
+      : `<div class="row"><span class="muted">Nothing to review yet. Find prospects in Settings, then approve drafts here.</span></div>`;
+    $$("#contact-today [data-go-outreach]").forEach((el) =>
+      el.addEventListener("click", () => showView("outreach"))
+    );
+
+    // Activity feed — recent outreach log.
+    const feed = hist.slice(0, 6);
+    $("#activity-feed").innerHTML = feed.length
+      ? feed
+          .map((r) => {
+            const dot = r.event === "replied" ? "green" : r.event === "sent" ? "amber" : "mid";
+            return `<div class="feed-item"><span class="feed-dot ${dot}"></span>
+          <div><div class="feed-text">${esc(r.full_name)} <span>· ${esc(r.event)}${r.company_name ? " · " + esc(r.company_name) : ""}</span></div>
+          <div class="feed-time">${r.occurred_at ? new Date(r.occurred_at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}</div></div></div>`;
+          })
+          .join("")
+      : `<span class="muted">No activity yet.</span>`;
+
+    // layout A/B toggle
+    applyTodayMode();
   } catch (e) {
     toast(e.message, true);
   }
 }
-
-function renderTiles(st) {
-  const tiles = TILE_DEFS.map((d) => {
-    let v = st.tiles[d.key];
-    v = d.money ? "$" + Number(v).toFixed(2) : v;
-    return `<div class="tile"><span class="icon"><i data-lucide="${d.icon}"></i></span>
-      <div class="num">${v}</div><div class="label">${d.label}</div></div>`;
-  });
-  st.coming_soon.forEach((m) => {
-    tiles.push(`<div class="tile soon"><span class="icon"><i data-lucide="mail"></i></span>
-      <div class="num">—</div><div class="label">${m[0].toUpperCase() + m.slice(1)}<span class="tag-soon">soon</span></div></div>`);
-  });
-  $("#tiles").innerHTML = tiles.join("");
-  icons();
+function applyTodayMode() {
+  const focus = TODAY_MODE === "b";
+  $("#today-stats").style.display = focus ? "none" : "";
+  $("#today-cols").style.gridTemplateColumns = focus ? "1fr" : "1.55fr 1fr";
+  $$("#today-cols > .card")[1].style.display = focus ? "none" : "";
+  $("#today-layout").textContent = focus ? "Full view" : "Focus view";
 }
+$("#today-layout").addEventListener("click", () => {
+  TODAY_MODE = TODAY_MODE === "a" ? "b" : "a";
+  applyTodayMode();
+});
 
-function renderKeys(keys) {
-  const names = { anthropic: "Anthropic", lusha: "Lusha", instantly: "Instantly", apify: "Apify", unipile: "Unipile" };
-  $("#key-status").innerHTML = Object.entries(names)
-    .map(([k, label]) => `<div class="key-row"><span class="dot ${keys[k] ? "key-on" : "key-off"}"></span>${label}</div>`)
-    .join("");
+// ── Prospects ───────────────────────────────────────────────────────────────
+let PROSPECTS = [];
+let FILTER = "all";
+async function loadProspects() {
+  try {
+    PROSPECTS = await api("/api/prospects");
+    renderProspects();
+  } catch (e) {
+    toast(e.message, true);
+  }
 }
-
-function renderChart(stats) {
-  const max = Math.max(1, ...stats.drafted, ...stats.sent);
-  const html = stats.labels
-    .map((lbl, i) => {
-      const dh = Math.round((stats.drafted[i] / max) * 150);
-      const sh = Math.round((stats.sent[i] / max) * 150);
-      return `<div class="day"><div class="bars">
-        <div class="bar bar-blue" style="height:${dh}px" title="Drafted: ${stats.drafted[i]}"></div>
-        <div class="bar bar-green" style="height:${sh}px" title="Sent: ${stats.sent[i]}"></div>
-      </div><small>${lbl}</small></div>`;
-    })
-    .join("");
-  $("#chart-activity").innerHTML = html;
-}
-
-function renderHistory(rows) {
+function renderProspects() {
+  const rows = PROSPECTS.filter((p) => FILTER === "all" || tierInfo(p.score).band === FILTER);
+  const grid = $("#prospect-grid");
   if (!rows.length) {
-    $("#history").innerHTML = `<p class="muted">Nothing sent yet. Approve a draft, then use Send.</p>`;
+    grid.innerHTML = `<div class="card"><span class="muted">No prospects yet. Find some in Settings → Find prospects.</span></div>`;
     return;
   }
-  $("#history").innerHTML = rows
-    .map(
-      (r) => `<div class="hrow"><div class="avatar" style="width:32px;height:32px;font-size:12px">${(r.full_name || "?")[0]}</div>
-      <div><strong>${r.full_name}</strong> <span class="muted">· ${r.company_name || ""}</span><br>
-      <span class="muted">${r.subject || r.channel}</span></div>
-      <span class="he">${r.event}</span></div>`
-    )
+  grid.innerHTML = rows
+    .map((p, i) => {
+      const status = p.status || "New";
+      const cls = status === "Replied" ? "green" : status === "Contacted" ? "amber" : "";
+      const sigs = (p.signals || [])
+        .slice(0, 3)
+        .map((s) => `<span class="pill">${esc(s)}</span>`)
+        .join("");
+      return `<div class="lead-card" data-id="${esc(p.id)}">
+        <div class="head"><span class="avatar ${avatarHue(i)}">${esc(p.initials)}</span>
+          <div class="grow"><div class="name">${esc(p.full_name)}</div>
+            <div class="role">${esc([p.title || p.headline, p.company_name].filter(Boolean).join(" · ")) || "—"}</div></div>
+          <span class="pill ${cls}">${esc(status)}</span></div>
+        ${scoreBlock(p.score)}
+        ${sigs ? `<div class="sigs">${sigs}</div>` : ""}</div>`;
+    })
     .join("");
+  $$("#prospect-grid .lead-card").forEach((el) =>
+    el.addEventListener("click", () => openDrawer(el.dataset.id))
+  );
 }
+$$("#prospect-filters .chip-filter").forEach((b) =>
+  b.addEventListener("click", () => {
+    FILTER = b.dataset.tier;
+    $$("#prospect-filters .chip-filter").forEach((x) => x.classList.toggle("active", x === b));
+    renderProspects();
+  })
+);
 
-// ── Review (inbox) ────────────────────────────────────────────────────────────
-let CURRENT = [];
-async function loadReview() {
+// ── Lead detail (slide-over) ──────────────────────────────────────────────────
+function closeDrawer() {
+  $("#drawer").classList.remove("open");
+  $("#drawer-backdrop").classList.remove("open");
+}
+$("#drawer-backdrop").addEventListener("click", closeDrawer);
+async function openDrawer(id) {
   try {
-    CURRENT = await api("/api/approvals");
-    $("#nav-pending").textContent = CURRENT.length;
-    const list = $("#inbox-list");
-    if (!CURRENT.length) {
-      list.innerHTML = `<p class="muted">No drafts awaiting review. Head to Run to generate some.</p>`;
-      $("#inbox-read").innerHTML = `<div class="empty-read">Nothing to review.</div>`;
-      return;
-    }
-    list.innerHTML = CURRENT.map(
-      (c) => `<div class="inbox-item" data-id="${c.id}">
-        <div class="avatar">${c.initials}</div>
-        <div><div class="who">${c.full_name}</div><div class="co">${c.company_name || c.headline || ""}</div></div>
-        <div class="meta"><span class="badge tier-${c.tier || "C"}">${c.score ?? "—"}</span></div>
-      </div>`
-    ).join("");
-    $$("#inbox-list .inbox-item").forEach((el) =>
-      el.addEventListener("click", () => selectDraft(el.dataset.id))
-    );
-    selectDraft(CURRENT[0].id);
+    const d = await api("/api/prospects/" + encodeURIComponent(id));
+    const role = [d.title || d.headline, d.company_name].filter(Boolean).join(" · ");
+    const outreach = (d.outreach || [])
+      .map(
+        (o) => `<div class="row"><div class="grow"><div class="who" style="font-size:13px">${esc(o.subject || o.channel)}</div>
+        <div class="meta">${esc(o.channel)} · ${esc(o.event)}</div></div>
+        <span class="meta">${o.occurred_at ? new Date(o.occurred_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : ""}</span></div>`
+      )
+      .join("");
+    $("#drawer-body").innerHTML = `
+      <div class="drawer-top"><span class="avatar" style="width:48px;height:48px;font-size:16px">${esc(d.initials)}</span>
+        <div><div style="font:600 20px/1.2 'Schibsted Grotesk'">${esc(d.full_name)}</div>
+          <div class="meta">${esc(role) || "—"}</div></div></div>
+      <div class="detail-block">${scoreBlock(d.score)}</div>
+      ${d.rationale ? `<div class="detail-block"><h4>Why they fit</h4><div class="detail-text">${esc(d.rationale)}</div></div>` : ""}
+      ${
+        (d.matched_criteria || []).length
+          ? `<div class="detail-block"><h4>Matched</h4><div class="sigs" style="display:flex;gap:6px;flex-wrap:wrap">${d.matched_criteria
+              .map((m) => `<span class="pill amber">${esc(m)}</span>`)
+              .join("")}</div></div>`
+          : ""
+      }
+      <div class="detail-block"><h4>Signals</h4><div class="detail-text">${esc(d.signal_summary) || "—"}</div></div>
+      ${d.email ? `<div class="detail-block"><h4>Contact</h4><div class="detail-text">${esc(d.email)} <span class="muted">(${esc(d.email_status)})</span></div></div>` : ""}
+      <div class="detail-block"><h4>Outreach so far</h4>${outreach || `<div class="detail-text">No outreach yet.</div>`}</div>`;
+    $("#drawer-foot").innerHTML = d.pending
+      ? `<button class="btn primary full" id="drawer-action">Review the draft →</button>`
+      : `<button class="btn secondary full" id="drawer-close">Close</button>`;
+    $("#drawer").classList.add("open");
+    $("#drawer-backdrop").classList.add("open");
+    const act = $("#drawer-action");
+    if (act) act.addEventListener("click", () => { closeDrawer(); showView("outreach"); });
+    const cl = $("#drawer-close");
+    if (cl) cl.addEventListener("click", closeDrawer);
   } catch (e) {
     toast(e.message, true);
   }
 }
 
-function selectDraft(id) {
-  const c = CURRENT.find((x) => x.id === id);
-  if (!c) return;
-  $$("#inbox-list .inbox-item").forEach((el) => el.classList.toggle("selected", el.dataset.id === id));
+// ── Outreach review queue ─────────────────────────────────────────────────────
+let QUEUE = [];
+let QI = 0;
+let EDITING = false;
+async function loadOutreach() {
+  try {
+    QUEUE = await api("/api/approvals");
+    setPending(QUEUE.length);
+    QI = 0;
+    EDITING = false;
+    renderOutreach();
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+function renderOutreach() {
+  const host = $("#msg-host");
+  const rail = $("#queue-list");
+  if (!QUEUE.length) {
+    $("#outreach-progress").textContent = "Nothing waiting";
+    host.innerHTML = `<div class="msg-card"><div class="empty-state"><div><p>Your queue is clear.</p>
+      <small>Find prospects in Settings, then approved drafts appear here one at a time.</small></div></div></div>`;
+    rail.innerHTML = "";
+    return;
+  }
+  if (QI >= QUEUE.length) QI = QUEUE.length - 1;
+  const c = QUEUE[QI];
   const isEmail = c.channel === "email";
-  $("#inbox-read").innerHTML = `
-    <div class="read-head">
-      <div class="avatar">${c.initials}</div>
-      <div><div class="who">${c.full_name}</div>
-        <div class="co">${[c.headline, c.company_name].filter(Boolean).join(" · ")}</div></div>
-      <span class="badge tier-${c.tier || "C"}" style="margin-left:auto">Tier ${c.tier || "?"} · ${c.score ?? "—"}</span>
-    </div>
-    <div class="read-meta">
-      ${c.email ? `<span class="chip">${c.email} (${c.email_status})</span>` : ""}
-      <span class="chip">Channel: ${c.channel}</span>
-      <span class="chip">Spend: $${c.spend_usd.toFixed(4)} · ${c.model_id}</span>
-    </div>
-    ${c.rationale ? `<div class="rationale"><strong>Why this score:</strong> ${c.rationale}</div>` : ""}
-    ${isEmail ? `<div class="field-label">Subject</div><input id="ed-subject" value="${(c.subject || "").replace(/"/g, "&quot;")}">` : ""}
-    <div class="field-label">Message</div>
-    <textarea id="ed-body" rows="9">${c.body || ""}</textarea>
-    <div class="field-label">Note (optional)</div>
-    <input id="ed-note" placeholder="Reason or reminder">
-    <div class="read-actions">
-      <button class="btn approve" id="btn-approve"><i data-lucide="check"></i> Approve</button>
-      <button class="btn reject" id="btn-reject"><i data-lucide="x"></i> Reject</button>
-    </div>`;
+  $("#outreach-progress").textContent = `Message ${QI + 1} of ${QUEUE.length} · drafted for you`;
 
+  const bodyView = EDITING
+    ? `${isEmail ? `<input type="text" id="ed-subject" value="${esc(c.subject)}">` : ""}
+       <textarea id="ed-body" rows="9">${esc(c.body)}</textarea>`
+    : `${isEmail && c.subject ? `<div class="msg-subject">${esc(c.subject)}</div>` : ""}
+       <div class="msg-body">${esc(c.body)}</div>`;
+
+  host.innerHTML = `<div class="msg-card">
+    <div class="msg-to"><span class="avatar">${esc(c.initials)}</span>
+      <div class="grow"><div class="who">To ${esc(c.full_name)}</div>
+        <div class="meta">${esc([c.headline, c.company_name].filter(Boolean).join(" · ")) || "—"}</div></div>
+      <span class="pill amber">Score ${c.score ?? "—"}</span></div>
+    ${bodyView}
+    <div class="tone"><span class="tone-label">Adjust tone</span>
+      <span class="tone-chip">Warmer</span><span class="tone-chip">Shorter</span><span class="tone-chip">More direct</span></div>
+    <div class="msg-actions">
+      <button class="btn primary" id="btn-approve">Approve
+        <svg viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11h13M12 6l5 5-5 5"/></svg></button>
+      <button class="btn secondary" id="btn-edit">${EDITING ? "Done" : "Edit"}</button>
+      <button class="btn text" id="btn-reject">Not a fit</button>
+      <button class="btn text" id="btn-skip" style="margin-left:auto">Skip</button>
+    </div></div>`;
+
+  rail.innerHTML = QUEUE.map(
+    (q, i) => `<div class="q-item ${i < QI ? "done" : i === QI ? "current" : ""}" data-i="${i}">
+      <span class="q-dot"></span><span class="q-name">${esc(q.full_name)}${i < QI ? " · done" : ""}</span></div>`
+  ).join("");
+  $$("#queue-list .q-item").forEach((el) =>
+    el.addEventListener("click", () => { QI = Number(el.dataset.i); EDITING = false; renderOutreach(); })
+  );
+
+  $("#btn-edit").addEventListener("click", () => { EDITING = !EDITING; renderOutreach(); });
+  $("#btn-skip").addEventListener("click", () => { QI = Math.min(QUEUE.length - 1, QI + 1); EDITING = false; renderOutreach(); });
   $("#btn-approve").addEventListener("click", () => decide(c, "approve"));
   $("#btn-reject").addEventListener("click", () => decide(c, "reject"));
-  icons();
+  $$("#msg-host .tone-chip").forEach((ch) =>
+    ch.addEventListener("click", () => toast("Tone adjust is coming soon"))
+  );
 }
-
 async function decide(c, action) {
-  const note = $("#ed-note").value.trim();
   try {
     if (action === "approve") {
-      const body = { note };
-      const subEl = $("#ed-subject");
-      const bodyEl = $("#ed-body");
-      if (subEl && subEl.value !== (c.subject || "")) body.edited_subject = subEl.value;
-      if (bodyEl && bodyEl.value !== (c.body || "")) body.edited_body = bodyEl.value;
+      const body = {};
+      if (EDITING) {
+        const sub = $("#ed-subject"), bod = $("#ed-body");
+        if (sub && sub.value !== (c.subject || "")) body.edited_subject = sub.value;
+        if (bod && bod.value !== (c.body || "")) body.edited_body = bod.value;
+      }
       await api(`/api/approvals/${c.id}/approve`, "POST", body);
-      toast("Approved");
+      toast("Approved — ready to send");
     } else {
-      await api(`/api/approvals/${c.id}/reject`, "POST", { note });
-      toast("Rejected");
+      await api(`/api/approvals/${c.id}/reject`, "POST", {});
+      toast("Marked not a fit");
     }
-    loadReview();
+    QUEUE = QUEUE.filter((x) => x.id !== c.id);
+    setPending(QUEUE.length);
+    EDITING = false;
+    renderOutreach();
   } catch (e) {
     toast(e.message, true);
   }
 }
 
-// ── Run ───────────────────────────────────────────────────────────────────
-$("#run-source").addEventListener("change", (e) => {
-  const v = e.target.value;
-  $("#row-csv").style.display = v === "manual_csv" ? "block" : "none";
-  $("#row-dataset").style.display = v === "apify_linkedin" ? "block" : "none";
-});
-
-$("#btn-run").addEventListener("click", async () => {
-  const btn = $("#btn-run");
-  const orig = btn.innerHTML;
-  btn.disabled = true;
-  btn.textContent = "Working…";
-  $("#run-result").innerHTML = "";
+// ── Analytics ─────────────────────────────────────────────────────────────────
+function areaChart(values, labels) {
+  const W = 620, H = 150, pad = 10;
+  const max = Math.max(1, ...values);
+  const n = values.length;
+  const X = (i) => pad + i * ((W - 2 * pad) / (n - 1 || 1));
+  const Y = (v) => pad + (1 - v / max) * (H - 2 * pad);
+  const pts = values.map((v, i) => `${X(i).toFixed(0)} ${Y(v).toFixed(0)}`);
+  const line = "M" + pts.join(" L");
+  const area = `${line} L${X(n - 1).toFixed(0)} ${H - pad} L${pad} ${H - pad} Z`;
+  const grid = [0.25, 0.5, 0.75]
+    .map((g) => `<line x1="${pad}" y1="${(pad + g * (H - 2 * pad)).toFixed(0)}" x2="${W - pad}" y2="${(pad + g * (H - 2 * pad)).toFixed(0)}"/>`)
+    .join("");
+  const ticks = labels
+    .map((l, i) => `<text class="chart-tick" x="${X(i).toFixed(0)}" y="${H + 4}" text-anchor="middle">${esc(l)}</text>`)
+    .join("");
+  return `<svg class="chart-svg" viewBox="0 0 ${W} ${H + 16}" fill="none">
+    <g class="chart-grid">${grid}<line class="base" x1="${pad}" y1="${H - pad}" x2="${W - pad}" y2="${H - pad}"/></g>
+    <path class="chart-area" d="${area}"/><path class="chart-line" d="${line}"/>
+    <circle cx="${X(n - 1).toFixed(0)}" cy="${Y(values[n - 1]).toFixed(0)}" r="4" fill="var(--amber)"/>
+    ${ticks}</svg>`;
+}
+async function loadAnalytics() {
   try {
-    const payload = {
-      source: $("#run-source").value,
-      dry_run: $("#run-dry").checked,
-      limit: Number($("#run-limit").value) || null,
-      input_csv: $("#run-csv").value,
-      dataset: $("#run-dataset").value,
-    };
-    const r = await api("/api/run", "POST", payload);
-    $("#run-result").innerHTML = `<table>
-      <tr><td>Prospects ingested</td><td>${r.ingest.prospects}</td></tr>
-      <tr><td>Enriched with email</td><td>${r.enrich.enriched}</td></tr>
-      <tr><td>Scored</td><td>${r.score.scored}</td></tr>
-      <tr><td>Drafts written</td><td>${r.draft.drafted}</td></tr>
-      <tr><td>Queued for approval</td><td>${r.enqueue.queued}</td></tr>
-      <tr><td>Claude cost</td><td>$${r.total_cost_usd.toFixed(4)}</td></tr>
-    </table>${(r.notes || []).map((n) => `<p class="muted">• ${n}</p>`).join("")}`;
-    toast(`Done — ${r.enqueue.queued} draft(s) queued`);
+    const [st, stats] = await Promise.all([api("/api/status"), api("/api/stats")]);
+    $("#chart-activity").innerHTML = areaChart(stats.drafted, stats.labels);
+    const total = stats.drafted.reduce((a, b) => a + b, 0);
+    $("#activity-context").textContent = total
+      ? `${total} draft${total === 1 ? "" : "s"} created this week`
+      : "No drafts yet this week";
+
+    const t = st.tiles;
+    const steps = [
+      ["Prospects found", t.prospects], ["Enriched", t.enriched],
+      ["Awaiting review", t.queued], ["Approved", t.approved], ["Sent", t.sent],
+    ];
+    const max = Math.max(1, ...steps.map((s) => s[1]));
+    $("#funnel").innerHTML = steps
+      .map(
+        ([lbl, v]) => `<div class="funnel-row"><span class="lbl">${lbl}</span>
+        <div class="bar-wrap"><span class="bar" style="width:${Math.max(2, (v / max) * 100)}%"></span>
+        <span class="val">${v}</span></div></div>`
+      )
+      .join("");
   } catch (e) {
     toast(e.message, true);
-    $("#run-result").innerHTML = `<p class="muted">${e.message}</p>`;
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = orig;
-    icons();
   }
-});
+}
 
-// ── Send ────────────────────────────────────────────────────────────────────
-$("#btn-send").addEventListener("click", async () => {
-  const btn = $("#btn-send");
-  const orig = btn.innerHTML;
-  btn.disabled = true;
-  btn.textContent = "Sending…";
-  try {
-    const r = await api("/api/send", "POST", { dry_run: $("#send-dry").checked });
-    $("#send-result").innerHTML = `<table>
-      <tr><td>Sent</td><td>${r.counts.sent || 0}</td></tr>
-      <tr><td>Failed</td><td>${r.counts.failed || 0}</td></tr>
-    </table>${r.dry_run ? `<p class="muted">Dry-run: nothing actually left the building.</p>` : ""}`;
-    toast(`Sent ${r.counts.sent || 0}`);
-  } catch (e) {
-    toast(e.message, true);
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = orig;
-    icons();
-  }
-});
-
-// ── Settings (ICP) ────────────────────────────────────────────────────────────
-const lines = (arr) => (arr || []).join("\n");
+// ── Settings: ICP / run / send / export / keys ─────────────────────────────────
+const linesOf = (arr) => (arr || []).join("\n");
 const parseLines = (s) => s.split("\n").map((x) => x.trim()).filter(Boolean);
 
 async function loadIcp() {
   try {
-    const icp = await api("/api/config/icp");
+    const [icp, st] = await Promise.all([api("/api/config/icp"), api("/api/status")]);
     $("#icp-name").value = icp.name || "";
-    $("#icp-industries").value = lines(icp.industries);
-    $("#icp-titles").value = lines(icp.titles);
-    $("#icp-geographies").value = lines(icp.geographies);
-    $("#icp-keywords").value = lines(icp.keywords);
-    $("#icp-exclude").value = lines(icp.exclude);
+    $("#icp-industries").value = linesOf(icp.industries);
+    $("#icp-titles").value = linesOf(icp.titles);
+    $("#icp-geographies").value = linesOf(icp.geographies);
+    $("#icp-keywords").value = linesOf(icp.keywords);
+    $("#icp-exclude").value = linesOf(icp.exclude);
     $("#icp-size-min").value = icp.company_size?.min ?? "";
     $("#icp-size-max").value = icp.company_size?.max ?? "";
     $("#icp-threshold").value = icp.score_threshold ?? 60;
+    renderKeys(st.keys);
   } catch (e) {
     toast(e.message, true);
   }
 }
-
+function renderKeys(keys) {
+  const names = { anthropic: "Anthropic", lusha: "Lusha", instantly: "Instantly", apify: "Apify", unipile: "Unipile" };
+  $("#key-status").innerHTML = Object.entries(names)
+    .map(
+      ([k, label]) =>
+        `<div class="key-row"><span class="key-dot ${keys[k] ? "on" : "off"}"></span>${label}
+        <span class="ks">${keys[k] ? "connected" : "not set"}</span></div>`
+    )
+    .join("");
+}
 $("#btn-save-icp").addEventListener("click", async () => {
   try {
-    const payload = {
+    await api("/api/config/icp", "PUT", {
       name: $("#icp-name").value || "My ICP",
       industries: parseLines($("#icp-industries").value),
       titles: parseLines($("#icp-titles").value),
@@ -307,29 +460,76 @@ $("#btn-save-icp").addEventListener("click", async () => {
         max: $("#icp-size-max").value ? Number($("#icp-size-max").value) : null,
       },
       score_threshold: Number($("#icp-threshold").value) || 60,
-    };
-    await api("/api/config/icp", "PUT", payload);
-    toast("ICP saved");
+    });
+    toast("Profile saved");
   } catch (e) {
     toast(e.message, true);
   }
 });
 
-// ── Export prospects (CSV) ──────────────────────────────────────────────────
+$("#run-source").addEventListener("change", (e) => {
+  $("#row-csv").style.display = e.target.value === "manual_csv" ? "block" : "none";
+  $("#row-dataset").style.display = e.target.value === "apify_linkedin" ? "block" : "none";
+});
+$("#btn-run").addEventListener("click", async () => {
+  const btn = $("#btn-run"), orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Working…";
+  $("#run-result").innerHTML = "";
+  try {
+    const r = await api("/api/run", "POST", {
+      source: $("#run-source").value,
+      dry_run: $("#run-dry").checked,
+      limit: Number($("#run-limit").value) || null,
+      input_csv: $("#run-csv").value,
+      dataset: $("#run-dataset").value,
+    });
+    $("#run-result").innerHTML = `<table>
+      <tr><td>Prospects ingested</td><td>${r.ingest.prospects}</td></tr>
+      <tr><td>Enriched with email</td><td>${r.enrich.enriched}</td></tr>
+      <tr><td>Scored</td><td>${r.score.scored}</td></tr>
+      <tr><td>Drafts written</td><td>${r.draft.drafted}</td></tr>
+      <tr><td>Queued for review</td><td>${r.enqueue.queued}</td></tr>
+      <tr><td>Claude cost</td><td>$${r.total_cost_usd.toFixed(4)}</td></tr></table>
+      ${(r.notes || []).map((n) => `<p class="muted">• ${esc(n)}</p>`).join("")}`;
+    toast(`Done — ${r.enqueue.queued} draft(s) queued`);
+  } catch (e) {
+    toast(e.message, true);
+    $("#run-result").innerHTML = `<p class="muted">${esc(e.message)}</p>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+});
+
+$("#btn-send").addEventListener("click", async () => {
+  const btn = $("#btn-send"), orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Sending…";
+  try {
+    const r = await api("/api/send", "POST", { dry_run: $("#send-dry").checked });
+    $("#send-result").innerHTML = `<table>
+      <tr><td>Sent</td><td>${r.counts.sent || 0}</td></tr>
+      <tr><td>Failed</td><td>${r.counts.failed || 0}</td></tr></table>
+      ${r.dry_run ? `<p class="muted">Dry-run: nothing actually left the building.</p>` : ""}`;
+    toast(`Sent ${r.counts.sent || 0}`);
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+});
+
 $("#btn-export").addEventListener("click", async () => {
-  const btn = $("#btn-export");
-  const orig = btn.innerHTML;
+  const btn = $("#btn-export"), orig = btn.textContent;
   btn.disabled = true;
   btn.textContent = "Exporting…";
   try {
     const res = await fetch("/api/export/prospects.csv", { headers: await authHeader() });
-    if (res.status === 401) {
-      window.location.href = "/login";
-      return;
-    }
+    if (res.status === 401) return (window.location.href = "/login");
     if (!res.ok) throw new Error("Export failed: " + res.status);
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(await res.blob());
     const a = document.createElement("a");
     a.href = url;
     a.download = "leia-prospects.csv";
@@ -342,43 +542,46 @@ $("#btn-export").addEventListener("click", async () => {
     toast(e.message, true);
   } finally {
     btn.disabled = false;
-    btn.innerHTML = orig;
-    icons();
+    btn.textContent = orig;
   }
 });
 
-// ── Logout ────────────────────────────────────────────────────────────────
-const logoutBtn = $("#btn-logout");
-if (logoutBtn) {
-  logoutBtn.addEventListener("click", async () => {
-    if (SB) await SB.auth.signOut();
-    window.location.href = "/login";
-  });
+// ── Shared ──────────────────────────────────────────────────────────────────
+function setPending(n) {
+  const b = $("#nav-pending");
+  b.textContent = n;
+  b.classList.toggle("zero", !n);
 }
+const logoutBtn = $("#btn-logout");
+logoutBtn.addEventListener("click", async () => {
+  if (SB) await SB.auth.signOut();
+  window.location.href = "/login";
+});
 
-// ── Boot: check auth, then load the dashboard ───────────────────────────────
+// ── Boot ──────────────────────────────────────────────────────────────────────
 async function boot() {
-  icons(); // render the static nav/sidebar icons
+  applyTheme(localStorage.getItem("leia-theme") || "light");
   try {
     const cfg = await fetch("/api/public-config").then((r) => r.json());
     AUTH_ENABLED = cfg.auth_enabled;
     if (AUTH_ENABLED) {
-      if (!window.supabase || !cfg.supabase_url || !cfg.supabase_anon_key) {
-        window.location.href = "/login";
-        return;
-      }
+      if (!window.supabase || !cfg.supabase_url || !cfg.supabase_anon_key)
+        return (window.location.href = "/login");
       SB = window.supabase.createClient(cfg.supabase_url, cfg.supabase_anon_key);
       const { data } = await SB.auth.getSession();
-      if (!data.session) {
-        window.location.href = "/login";
-        return;
-      }
-      if (logoutBtn) logoutBtn.style.display = "";
+      if (!data.session) return (window.location.href = "/login");
+      logoutBtn.style.display = "";
+      const email = data.session.user?.email || "";
+      window.LEIA_NAME = email.split("@")[0].split(/[.\-_]/)[0].replace(/^\w/, (c) => c.toUpperCase());
+      $("#user-name").textContent = email || "Signed in";
+      $("#user-initials").textContent = initials(window.LEIA_NAME || email);
+    } else {
+      $("#user-name").textContent = "Local mode";
+      $("#user-initials").textContent = "··";
     }
-    loadDashboard();
+    loadToday();
   } catch (e) {
     toast(e.message, true);
   }
 }
-
 boot();

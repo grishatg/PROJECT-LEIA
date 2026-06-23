@@ -49,7 +49,9 @@ from leia.web.config_store import get_effective_icp, save_icp
 from leia.web.serializers import (
     export_prospects_csv,
     serialize_approval,
+    serialize_lead_detail,
     serialize_outreach,
+    serialize_prospect_row,
 )
 
 # Applied to every data route so nothing runs without a verified login (when
@@ -354,6 +356,28 @@ def export_prospects(session: Session = Depends(get_session)):
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=leia-prospects.csv"},
     )
+
+
+@app.get("/api/prospects", dependencies=_AUTH)
+def prospects(session: Session = Depends(get_session)) -> list[dict]:
+    """Every prospect (+ enrichment, latest score, signals) for the browse grid."""
+    rows = session.execute(
+        select(Prospect)
+        .where(Prospect.account_id == "local")
+        .order_by(Prospect.created_at.desc())
+    ).scalars().all()
+    out = [serialize_prospect_row(session, p) for p in rows]
+    # Highest score first; un-scored prospects sink to the bottom.
+    out.sort(key=lambda r: (r["score"] is not None, r["score"] or 0), reverse=True)
+    return out
+
+
+@app.get("/api/prospects/{prospect_id}", dependencies=_AUTH)
+def prospect_detail(prospect_id: str, session: Session = Depends(get_session)) -> dict:
+    prospect = session.get(Prospect, prospect_id)
+    if not prospect:
+        raise HTTPException(404, "Prospect not found")
+    return serialize_lead_detail(session, prospect)
 
 
 @app.get("/api/history", dependencies=_AUTH)

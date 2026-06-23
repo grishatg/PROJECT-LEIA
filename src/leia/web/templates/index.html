@@ -3,150 +3,227 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>LEIA — Equity Energies</title>
-  <link rel="stylesheet" href="/static/style.css?v=ee-1" />
+  <title>leia</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,16..72,400;1,16..72,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css?v=ds-1" />
 </head>
 <body>
   <div class="app">
     <!-- Sidebar -->
     <aside class="sidebar">
       <div class="brand">
-        <div class="brand-mark">L</div>
-        <div class="brand-text">LEIA<span>Equity Energies</span></div>
+        <span class="brand-dot"></span>
+        <span class="brand-name">leia</span>
       </div>
       <nav>
-        <button class="nav-item active" data-view="dashboard"><i data-lucide="layout-dashboard"></i> Dashboard</button>
-        <button class="nav-item" data-view="review"><i data-lucide="inbox"></i> Review <span class="pill" id="nav-pending">0</span></button>
-        <button class="nav-item" data-view="run"><i data-lucide="rocket"></i> Run</button>
-        <button class="nav-item" data-view="send"><i data-lucide="send"></i> Send</button>
-        <button class="nav-item" data-view="settings"><i data-lucide="settings"></i> Settings</button>
+        <button class="nav-item active" data-view="today">
+          <svg viewBox="0 0 22 22" fill="none" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"><path d="M3 9.2 11 3l8 6.2M5 8.4v9h12v-9"/></svg>
+          <span>Today</span></button>
+        <button class="nav-item" data-view="prospects">
+          <svg viewBox="0 0 22 22" fill="none" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"><circle cx="8" cy="8" r="3"/><path d="M3 18c0-3 2.4-4.6 5-4.6s5 1.6 5 4.6"/><path d="M15 7.6a2.4 2.4 0 0 1 0 4.8"/><path d="M17 18c0-2.2-1-3.6-2.4-4.2"/></svg>
+          <span>Prospects</span></button>
+        <button class="nav-item" data-view="outreach">
+          <svg viewBox="0 0 22 22" fill="none" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"><path d="M4 5.5h14v9.5H8.5L4.5 18V5.5Z"/></svg>
+          <span>Outreach</span><span class="nav-badge zero" id="nav-pending">0</span></button>
+        <button class="nav-item" data-view="analytics">
+          <svg viewBox="0 0 22 22" fill="none" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"><path d="M4 16.5V10M9.3 16.5V5.5M14.6 16.5v-4.2M19 16.5V8"/></svg>
+          <span>Analytics</span></button>
+        <button class="nav-item" data-view="settings">
+          <svg viewBox="0 0 22 22" fill="none" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"><path d="M4 7h8M16 7h2M4 15h2M10 15h8"/><circle cx="14" cy="7" r="2.1"/><circle cx="8" cy="15" r="2.1"/></svg>
+          <span>Settings</span></button>
       </nav>
       <div class="sidebar-foot">
-        <div id="key-status" class="key-status"></div>
-        <button class="nav-item" id="btn-logout" style="display:none"><i data-lucide="log-out"></i> Log out</button>
+        <div class="user">
+          <span class="avatar" id="user-initials">··</span>
+          <div style="min-width:0">
+            <div class="user-name" id="user-name">Signed in</div>
+            <div class="user-plan">Solo plan</div>
+          </div>
+        </div>
+        <div class="foot-row">
+          <button class="icon-btn" id="btn-theme" title="Toggle light / dark">
+            <svg id="theme-icon" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="4"/><path d="M11 2v2M11 18v2M2 11h2M18 11h2M4.5 4.5l1.4 1.4M16.1 16.1l1.4 1.4M17.5 4.5l-1.4 1.4M5.9 16.1l-1.4 1.4"/></svg>
+          </button>
+          <button class="icon-btn" id="btn-logout" title="Log out" style="display:none">
+            <svg viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4H5v14h4M14 8l4 3-4 3M18 11H9"/></svg>
+          </button>
+        </div>
       </div>
     </aside>
 
     <!-- Main -->
     <main class="main">
-      <!-- DASHBOARD -->
-      <section class="view active" id="view-dashboard">
-        <h1>Dashboard.</h1>
-        <p class="sub">Your pipeline at a glance. Nothing sends until you approve it.</p>
 
-        <div class="toolbar">
-          <button class="btn ghost" id="btn-export"><i data-lucide="download"></i> Export prospects (CSV)</button>
-        </div>
-
-        <div class="tiles" id="tiles"></div>
-
-        <div class="charts">
-          <div class="card chart-card">
-            <h3>Outreach activity.</h3>
-            <div class="chart" id="chart-activity"></div>
-            <div class="legend">
-              <span><i class="dot dot-blue"></i>Drafted</span>
-              <span><i class="dot dot-green"></i>Sent</span>
-            </div>
+      <!-- ───────── TODAY ───────── -->
+      <section class="view active" id="view-today">
+        <div class="page-head">
+          <div>
+            <h1 class="screen" id="today-greeting">Good day</h1>
+            <div class="sub" id="today-date"></div>
           </div>
-          <div class="card chart-card">
-            <h3>Engagement.</h3>
-            <div class="chart-empty">
-              <div>
-                <p>Delivered · Opened · Replied</p>
-                <small>Coming soon — needs reply tracking from Instantly and Unipile.</small>
-              </div>
-            </div>
+          <div style="display:flex; gap:10px; align-items:center;">
+            <button class="chip-filter" id="today-layout" data-mode="a" title="Switch layout">Focus view</button>
+            <button class="btn primary" data-view="outreach">Start today’s outreach
+              <svg viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11h13M12 6l5 5-5 5"/></svg></button>
           </div>
         </div>
+        <div class="stat-grid" id="today-stats"></div>
+        <div class="today-cols" id="today-cols">
+          <div class="card list-card">
+            <div class="card-head"><span class="card-title">Contact today</span>
+              <button class="link-amber" data-view="prospects">View all →</button></div>
+            <div id="contact-today"></div>
+          </div>
+          <div class="card">
+            <div class="card-title" style="margin-bottom:18px;">Since you last looked</div>
+            <div class="feed" id="activity-feed"></div>
+          </div>
+        </div>
+      </section>
 
+      <!-- ───────── PROSPECTS ───────── -->
+      <section class="view" id="view-prospects">
+        <div class="page-head">
+          <div><div class="eyebrow">Prospects</div><h1 class="screen">Browse leads</h1>
+            <div class="sub">Your scored prospects. Open any card for the full picture.</div></div>
+        </div>
+        <div class="filters" id="prospect-filters">
+          <button class="chip-filter active" data-tier="all">All</button>
+          <button class="chip-filter" data-tier="A">Excellent &amp; strong</button>
+          <button class="chip-filter" data-tier="B">Worth a look</button>
+          <button class="chip-filter" data-tier="C">Low</button>
+        </div>
+        <div class="grid" id="prospect-grid"></div>
+      </section>
+
+      <!-- ───────── OUTREACH ───────── -->
+      <section class="view" id="view-outreach">
+        <div class="page-head" style="margin-bottom:24px;">
+          <div><h1 class="screen">Review queue</h1>
+            <div class="sub" id="outreach-progress">Nothing waiting</div></div>
+        </div>
+        <div class="review" id="review-wrap">
+          <div class="review-main">
+            <div id="msg-host"></div>
+          </div>
+          <div class="queue-rail">
+            <h4>In the queue</h4>
+            <div id="queue-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ───────── ANALYTICS ───────── -->
+      <section class="view" id="view-analytics">
+        <div class="page-head">
+          <div><div class="eyebrow">Analytics</div><h1 class="screen">How am I doing?</h1>
+            <div class="sub">A few calm numbers. Plain language tells you if it’s good.</div></div>
+        </div>
         <div class="card">
-          <h3>Recent sends.</h3>
-          <div id="history"></div>
+          <div class="card-title" style="margin-bottom:6px;">Outreach activity</div>
+          <div class="muted" style="margin-bottom:18px;">Drafts created over the last 7 days.</div>
+          <div id="chart-activity"></div>
+          <div class="context-line" id="activity-context"></div>
         </div>
-      </section>
-
-      <!-- REVIEW -->
-      <section class="view" id="view-review">
-        <h1>Review queue.</h1>
-        <p class="sub">Edit if you like, then Approve or Reject. Approving only marks it ready — it does not send.</p>
-        <div class="inbox">
-          <div class="inbox-list" id="inbox-list"></div>
-          <div class="inbox-read card" id="inbox-read">
-            <div class="empty-read">Select a draft on the left to review it.</div>
+        <div class="card">
+          <div class="card-title" style="margin-bottom:18px;">Your funnel</div>
+          <div id="funnel"></div>
+        </div>
+        <div class="card">
+          <div class="card-title" style="margin-bottom:18px;">Engagement</div>
+          <div class="empty-state">
+            <div><p>Delivered · Opened · Replied</p>
+              <small>Coming soon — needs reply tracking from Instantly and Unipile.</small></div>
           </div>
         </div>
       </section>
 
-      <!-- RUN -->
-      <section class="view" id="view-run">
-        <h1>Run the pipeline.</h1>
-        <p class="sub">Find prospects, enrich, score and draft. Dry-run is free and instant.</p>
-        <div class="card form-card">
-          <label>Source
-            <select id="run-source">
-              <option value="manual_csv">Manual CSV file</option>
-              <option value="lusha_prospecting">Lusha prospecting</option>
-              <option value="lusha_signals">Lusha intent signals</option>
-              <option value="apify_linkedin">Apify / LinkedIn (incl. Sales Navigator export)</option>
-            </select>
-          </label>
-          <label id="row-csv">CSV path
-            <input type="text" id="run-csv" value="data/fixtures/contacts.sample.csv" />
-          </label>
-          <label id="row-dataset" style="display:none">Apify dataset id
-            <input type="text" id="run-dataset" placeholder="from your Apify Sales Nav scraper run — see SALES_NAV.md" />
-          </label>
-          <label>Limit (max prospects)
-            <input type="number" id="run-limit" value="3" min="1" />
-          </label>
-          <label class="checkbox">
-            <input type="checkbox" id="run-dry" checked /> Dry-run (no spend, no real data)
-          </label>
-          <button class="btn primary" id="btn-run"><i data-lucide="rocket"></i> Run pipeline</button>
-          <div class="result" id="run-result"></div>
-        </div>
-      </section>
-
-      <!-- SEND -->
-      <section class="view" id="view-send">
-        <h1>Send approved.</h1>
-        <p class="sub">Sends only the drafts you've approved. Everything else is untouched.</p>
-        <div class="card form-card">
-          <label class="checkbox">
-            <input type="checkbox" id="send-dry" checked /> Dry-run (don't actually send)
-          </label>
-          <button class="btn primary" id="btn-send"><i data-lucide="send"></i> Send approved</button>
-          <div class="result" id="send-result"></div>
-        </div>
-      </section>
-
-      <!-- SETTINGS -->
+      <!-- ───────── SETTINGS ───────── -->
       <section class="view" id="view-settings">
-        <h1>Your Ideal Customer Profile.</h1>
-        <p class="sub">Who LEIA targets and how strictly. Saved to your account.</p>
-        <div class="card form-card" id="icp-form">
-          <label>Profile name <input type="text" id="icp-name" /></label>
-          <label>Industries (one per line) <textarea id="icp-industries" rows="4"></textarea></label>
-          <label>Job titles (one per line) <textarea id="icp-titles" rows="4"></textarea></label>
-          <label>Geographies (one per line) <textarea id="icp-geographies" rows="3"></textarea></label>
-          <label>Keywords (one per line) <textarea id="icp-keywords" rows="3"></textarea></label>
-          <label>Exclude (one per line) <textarea id="icp-exclude" rows="2"></textarea></label>
-          <div class="row2">
-            <label>Company size min <input type="number" id="icp-size-min" /></label>
-            <label>Company size max <input type="number" id="icp-size-max" /></label>
+        <div class="settings-col">
+          <div class="page-head"><div><h1 class="screen">Settings</h1>
+            <div class="sub">Plain options, sensible defaults. Quiet by default.</div></div></div>
+
+          <div class="group-label">Outreach</div>
+          <div class="setting-group">
+            <div class="setting-row">
+              <div><div class="st">Always ask before sending</div>
+                <div class="sd">Review every message yourself. This is LEIA’s core safety rule.</div></div>
+              <button class="toggle on locked" title="Locked on — the approval gate keeps you safe"><span class="knob"></span></button>
+            </div>
           </div>
-          <label>Score threshold (0–100) <input type="number" id="icp-threshold" min="0" max="100" /></label>
-          <button class="btn primary" id="btn-save-icp"><i data-lucide="save"></i> Save ICP</button>
-          <div class="result" id="icp-result"></div>
+
+          <div class="group-label">Ideal customer profile</div>
+          <div class="setting-group" style="padding:20px;">
+            <div class="form" id="icp-form">
+              <label class="field">Profile name<input type="text" id="icp-name" /></label>
+              <label class="field">Industries (one per line)<textarea id="icp-industries" rows="4"></textarea></label>
+              <label class="field">Job titles (one per line)<textarea id="icp-titles" rows="4"></textarea></label>
+              <label class="field">Geographies (one per line)<textarea id="icp-geographies" rows="3"></textarea></label>
+              <label class="field">Keywords (one per line)<textarea id="icp-keywords" rows="3"></textarea></label>
+              <label class="field">Exclude (one per line)<textarea id="icp-exclude" rows="2"></textarea></label>
+              <div class="row2">
+                <label class="field">Company size min<input type="number" id="icp-size-min" /></label>
+                <label class="field">Company size max<input type="number" id="icp-size-max" /></label>
+              </div>
+              <label class="field">Score threshold (0–100)<input type="number" id="icp-threshold" min="0" max="100" /></label>
+              <button class="btn primary" id="btn-save-icp">Save profile</button>
+              <div class="result" id="icp-result"></div>
+            </div>
+          </div>
+
+          <div class="group-label">Find prospects</div>
+          <div class="setting-group" style="padding:20px;">
+            <div class="form">
+              <label class="field">Source
+                <select id="run-source">
+                  <option value="manual_csv">Manual CSV file</option>
+                  <option value="lusha_prospecting">Lusha prospecting</option>
+                  <option value="lusha_signals">Lusha intent signals</option>
+                  <option value="apify_linkedin">Apify / LinkedIn (Sales Navigator export)</option>
+                </select></label>
+              <label class="field" id="row-csv">CSV path<input type="text" id="run-csv" value="data/fixtures/contacts.sample.csv" /></label>
+              <label class="field" id="row-dataset" style="display:none">Apify dataset id<input type="text" id="run-dataset" placeholder="from your Sales Nav scraper run — see SALES_NAV.md" /></label>
+              <label class="field">Limit (max prospects)<input type="number" id="run-limit" value="3" min="1" /></label>
+              <label class="checkbox"><input type="checkbox" id="run-dry" checked /> Dry-run (no spend, no real data)</label>
+              <button class="btn primary" id="btn-run">Find prospects</button>
+              <div class="result" id="run-result"></div>
+            </div>
+          </div>
+
+          <div class="group-label">Send approved</div>
+          <div class="setting-group" style="padding:20px;">
+            <div class="form">
+              <div class="muted" style="margin-bottom:14px;">Sends only the drafts you’ve approved in Outreach. Everything else is untouched.</div>
+              <label class="checkbox"><input type="checkbox" id="send-dry" checked /> Dry-run (don’t actually send)</label>
+              <button class="btn primary" id="btn-send">Send approved</button>
+              <div class="result" id="send-result"></div>
+            </div>
+          </div>
+
+          <div class="group-label">Data</div>
+          <div class="setting-group" style="padding:20px;">
+            <button class="btn secondary" id="btn-export">Export prospects (CSV)</button>
+          </div>
+
+          <div class="group-label">Connections</div>
+          <div class="setting-group"><div class="key-grid" id="key-status"></div></div>
         </div>
       </section>
     </main>
   </div>
 
+  <!-- Lead-detail slide-over -->
+  <div class="drawer-backdrop" id="drawer-backdrop"></div>
+  <aside class="drawer" id="drawer">
+    <div class="drawer-body" id="drawer-body"></div>
+    <div class="drawer-foot" id="drawer-foot"></div>
+  </aside>
+
   <div class="toast" id="toast"></div>
-  <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/static/app.js?v=ee-1"></script>
+  <script src="/static/app.js?v=ds-1"></script>
 </body>
 </html>
