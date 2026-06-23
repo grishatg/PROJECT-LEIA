@@ -16,7 +16,7 @@ from pathlib import Path
 
 import yaml
 from fastapi import Body, Depends, FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
@@ -46,7 +46,11 @@ from leia.models import (
 from leia.pipeline import build_components, run_until_queue, send_approved
 from leia.web.auth import auth_enabled, require_user
 from leia.web.config_store import get_effective_icp, save_icp
-from leia.web.serializers import serialize_approval, serialize_outreach
+from leia.web.serializers import (
+    export_prospects_csv,
+    serialize_approval,
+    serialize_outreach,
+)
 
 # Applied to every data route so nothing runs without a verified login (when
 # Supabase is configured). Public routes below intentionally omit it.
@@ -339,6 +343,17 @@ def send(
         session, components.channel_for, daily_cap=app_settings.limits.daily_send_cap
     )
     return {"counts": report.counts, "notes": components.notes, "dry_run": dry_run}
+
+
+@app.get("/api/export/prospects.csv", dependencies=_AUTH)
+def export_prospects(session: Session = Depends(get_session)):
+    """Download every prospect (+ enrichment, latest score, draft status) as CSV."""
+    csv_text = export_prospects_csv(session)
+    return Response(
+        content=csv_text,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=leia-prospects.csv"},
+    )
 
 
 @app.get("/api/history", dependencies=_AUTH)

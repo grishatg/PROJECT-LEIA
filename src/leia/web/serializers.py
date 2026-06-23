@@ -6,9 +6,19 @@ ApprovalItem -> DraftMessage -> ScoredLead -> Prospect -> EnrichedContact.
 
 from __future__ import annotations
 
+import csv
+import io
+
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from leia.models import ApprovalItem, DraftMessage, OutreachLog, Prospect, ScoredLead
+from leia.models import (
+    ApprovalItem,
+    DraftMessage,
+    OutreachLog,
+    Prospect,
+    ScoredLead,
+)
 
 
 def _initials(name: str | None) -> str:
@@ -56,6 +66,71 @@ def serialize_approval(session: Session, item: ApprovalItem) -> dict:
         "cache_read_tokens": cache_read,
         "cache_write_tokens": cache_write,
     }
+
+
+EXPORT_COLUMNS = [
+    "full_name",
+    "company_name",
+    "title",
+    "email",
+    "email_status",
+    "linkedin_url",
+    "score",
+    "tier",
+    "drafts",
+    "created_at",
+]
+
+
+def export_prospects_csv(session: Session, account_id: str = "local") -> str:
+    """Flatten every prospect (+ enrichment, latest score, draft statuses) into CSV text."""
+    prospects = (
+        session.execute(
+            select(Prospect)
+            .where(Prospect.account_id == account_id)
+            .order_by(Prospect.created_at.desc())
+        )
+        .scalars()
+        .all()
+    )
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(EXPORT_COLUMNS)
+
+    for p in prospects:
+        ec = p.enrichment
+        leads = sorted(
+            p.scored_leads, key=lambda lead: lead.created_at or "", reverse=True
+        )
+        lead = leads[0] if leads else None
+        drafts = ""
+        if lead:
+            draft_rows = (
+                session.execute(
+                    select(DraftMessage).where(DraftMessage.scored_lead_id == lead.id)
+                )
+                .scalars()
+                .all()
+            )
+            drafts = "; ".join(f"{d.channel}:{d.status}" for d in draft_rows)
+
+        writer.writerow(
+            [
+                p.full_name,
+                p.company_name or "",
+                (ec.title if ec else None) or "",
+                (ec.email if ec else None) or "",
+                (ec.email_status if ec else None) or "",
+                p.linkedin_url or "",
+                lead.score if lead else "",
+                lead.tier if lead else "",
+                drafts,
+                p.created_at.isoformat() if p.created_at else "",
+            ]
+        )
+
+    return buf.getvalue()
 
 
 def serialize_outreach(session: Session, log: OutreachLog) -> dict:

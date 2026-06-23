@@ -281,6 +281,23 @@ def send(
 
 
 @app.command()
+def export(
+    out: Path = typer.Option("prospects.csv", "--out", "-o", help="Output CSV path."),
+) -> None:
+    """Export every prospect (+ enrichment, latest score, draft status) to a CSV file."""
+    from leia.db import make_engine, make_session_factory, session_scope
+    from leia.web.serializers import export_prospects_csv
+
+    engine = make_engine()
+    factory = make_session_factory(engine)
+    with session_scope(factory) as session:
+        csv_text = export_prospects_csv(session)
+    out.write_text(csv_text, encoding="utf-8")
+    rows = max(0, csv_text.count("\n") - 1)
+    console.print(f"[green]Exported[/] {rows} prospect(s) to [bold]{out}[/]")
+
+
+@app.command()
 def dashboard(
     port: int = typer.Option(8000, help="Port for the web control center."),
     host: str = typer.Option("127.0.0.1", help="Bind address (local only by default)."),

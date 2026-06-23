@@ -35,6 +35,9 @@ function toast(msg, isError = false) {
   setTimeout(() => (t.className = "toast"), 2600);
 }
 
+// Render any <i data-lucide> placeholders added to the DOM.
+const icons = () => window.lucide && window.lucide.createIcons();
+
 // ── Navigation ────────────────────────────────────────────────────────────
 function showView(name) {
   $$(".nav-item").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
@@ -47,12 +50,12 @@ $$(".nav-item").forEach((b) => b.addEventListener("click", () => showView(b.data
 
 // ── Dashboard ───────────────────────────────────────────────────────────────
 const TILE_DEFS = [
-  { key: "prospects", icon: "👥", label: "Prospects Fetched" },
-  { key: "enriched", icon: "✨", label: "Enriched" },
-  { key: "queued", icon: "📝", label: "Drafts Queued" },
-  { key: "approved", icon: "✅", label: "Approved" },
-  { key: "sent", icon: "📨", label: "Sent" },
-  { key: "spend_usd", icon: "💰", label: "Claude Spend", money: true },
+  { key: "prospects", icon: "users", label: "Prospects fetched" },
+  { key: "enriched", icon: "sparkles", label: "Enriched" },
+  { key: "queued", icon: "file-pen-line", label: "Drafts queued" },
+  { key: "approved", icon: "circle-check", label: "Approved" },
+  { key: "sent", icon: "send", label: "Sent" },
+  { key: "spend_usd", icon: "wallet", label: "Claude spend", money: true },
 ];
 
 async function loadDashboard() {
@@ -76,14 +79,15 @@ function renderTiles(st) {
   const tiles = TILE_DEFS.map((d) => {
     let v = st.tiles[d.key];
     v = d.money ? "$" + Number(v).toFixed(2) : v;
-    return `<div class="tile"><div class="icon">${d.icon}</div>
+    return `<div class="tile"><span class="icon"><i data-lucide="${d.icon}"></i></span>
       <div class="num">${v}</div><div class="label">${d.label}</div></div>`;
   });
   st.coming_soon.forEach((m) => {
-    tiles.push(`<div class="tile soon"><div class="icon">📧</div>
+    tiles.push(`<div class="tile soon"><span class="icon"><i data-lucide="mail"></i></span>
       <div class="num">—</div><div class="label">${m[0].toUpperCase() + m.slice(1)}<span class="tag-soon">soon</span></div></div>`);
   });
   $("#tiles").innerHTML = tiles.join("");
+  icons();
 }
 
 function renderKeys(keys) {
@@ -132,7 +136,7 @@ async function loadReview() {
     const list = $("#inbox-list");
     if (!CURRENT.length) {
       list.innerHTML = `<p class="muted">No drafts awaiting review. Head to Run to generate some.</p>`;
-      $("#inbox-read").innerHTML = `<div class="empty-read">Nothing to review 🎉</div>`;
+      $("#inbox-read").innerHTML = `<div class="empty-read">Nothing to review.</div>`;
       return;
     }
     list.innerHTML = CURRENT.map(
@@ -164,23 +168,24 @@ function selectDraft(id) {
       <span class="badge tier-${c.tier || "C"}" style="margin-left:auto">Tier ${c.tier || "?"} · ${c.score ?? "—"}</span>
     </div>
     <div class="read-meta">
-      ${c.email ? `<span class="chip">✉️ ${c.email} (${c.email_status})</span>` : ""}
-      <span class="chip">📡 ${c.channel}</span>
-      <span class="chip">💰 $${c.spend_usd.toFixed(4)} · ${c.model_id}</span>
+      ${c.email ? `<span class="chip">${c.email} (${c.email_status})</span>` : ""}
+      <span class="chip">Channel: ${c.channel}</span>
+      <span class="chip">Spend: $${c.spend_usd.toFixed(4)} · ${c.model_id}</span>
     </div>
     ${c.rationale ? `<div class="rationale"><strong>Why this score:</strong> ${c.rationale}</div>` : ""}
     ${isEmail ? `<div class="field-label">Subject</div><input id="ed-subject" value="${(c.subject || "").replace(/"/g, "&quot;")}">` : ""}
     <div class="field-label">Message</div>
     <textarea id="ed-body" rows="9">${c.body || ""}</textarea>
     <div class="field-label">Note (optional)</div>
-    <input id="ed-note" placeholder="Reason / reminder…">
+    <input id="ed-note" placeholder="Reason or reminder">
     <div class="read-actions">
-      <button class="btn approve" id="btn-approve">✅ Approve</button>
-      <button class="btn reject" id="btn-reject">✕ Reject</button>
+      <button class="btn approve" id="btn-approve"><i data-lucide="check"></i> Approve</button>
+      <button class="btn reject" id="btn-reject"><i data-lucide="x"></i> Reject</button>
     </div>`;
 
   $("#btn-approve").addEventListener("click", () => decide(c, "approve"));
   $("#btn-reject").addEventListener("click", () => decide(c, "reject"));
+  icons();
 }
 
 async function decide(c, action) {
@@ -193,7 +198,7 @@ async function decide(c, action) {
       if (subEl && subEl.value !== (c.subject || "")) body.edited_subject = subEl.value;
       if (bodyEl && bodyEl.value !== (c.body || "")) body.edited_body = bodyEl.value;
       await api(`/api/approvals/${c.id}/approve`, "POST", body);
-      toast("Approved ✓");
+      toast("Approved");
     } else {
       await api(`/api/approvals/${c.id}/reject`, "POST", { note });
       toast("Rejected");
@@ -213,8 +218,9 @@ $("#run-source").addEventListener("change", (e) => {
 
 $("#btn-run").addEventListener("click", async () => {
   const btn = $("#btn-run");
+  const orig = btn.innerHTML;
   btn.disabled = true;
-  btn.textContent = "⏳ Working…";
+  btn.textContent = "Working…";
   $("#run-result").innerHTML = "";
   try {
     const payload = {
@@ -239,15 +245,17 @@ $("#btn-run").addEventListener("click", async () => {
     $("#run-result").innerHTML = `<p class="muted">${e.message}</p>`;
   } finally {
     btn.disabled = false;
-    btn.textContent = "🚀 Run pipeline";
+    btn.innerHTML = orig;
+    icons();
   }
 });
 
 // ── Send ────────────────────────────────────────────────────────────────────
 $("#btn-send").addEventListener("click", async () => {
   const btn = $("#btn-send");
+  const orig = btn.innerHTML;
   btn.disabled = true;
-  btn.textContent = "⏳ Sending…";
+  btn.textContent = "Sending…";
   try {
     const r = await api("/api/send", "POST", { dry_run: $("#send-dry").checked });
     $("#send-result").innerHTML = `<table>
@@ -259,7 +267,8 @@ $("#btn-send").addEventListener("click", async () => {
     toast(e.message, true);
   } finally {
     btn.disabled = false;
-    btn.textContent = "📤 Send approved";
+    btn.innerHTML = orig;
+    icons();
   }
 });
 
@@ -300,9 +309,41 @@ $("#btn-save-icp").addEventListener("click", async () => {
       score_threshold: Number($("#icp-threshold").value) || 60,
     };
     await api("/api/config/icp", "PUT", payload);
-    toast("ICP saved ✓");
+    toast("ICP saved");
   } catch (e) {
     toast(e.message, true);
+  }
+});
+
+// ── Export prospects (CSV) ──────────────────────────────────────────────────
+$("#btn-export").addEventListener("click", async () => {
+  const btn = $("#btn-export");
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.textContent = "Exporting…";
+  try {
+    const res = await fetch("/api/export/prospects.csv", { headers: await authHeader() });
+    if (res.status === 401) {
+      window.location.href = "/login";
+      return;
+    }
+    if (!res.ok) throw new Error("Export failed: " + res.status);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "leia-prospects.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast("Prospects exported");
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = orig;
+    icons();
   }
 });
 
@@ -317,6 +358,7 @@ if (logoutBtn) {
 
 // ── Boot: check auth, then load the dashboard ───────────────────────────────
 async function boot() {
+  icons(); // render the static nav/sidebar icons
   try {
     const cfg = await fetch("/api/public-config").then((r) => r.json());
     AUTH_ENABLED = cfg.auth_enabled;

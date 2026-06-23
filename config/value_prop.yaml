@@ -1,29 +1,37 @@
-# value_prop.yaml — WHAT you offer.
-# Feeds both scoring (is this prospect relevant to what we sell?) and drafting
-# (so messages are specific and credible). Keep it honest and concrete.
+# value_prop.yaml — WHAT Equity Energies offers.
+# Feeds both scoring (is this prospect relevant?) and drafting (specific, credible
+# messages). Bureau-as-wedge -> procurement -> Unified Platform / MY ZEERO ->
+# Net Zero pathway -> on-site generation (solar / CHP / HVO). British English; honest, concrete.
 
 # One or two sentences: what you do and for whom.
 offer: >
-  We help UK energy and utility firms cut procurement costs and hit net-zero
-  targets faster with data-driven energy management.
+  We help UK private-sector, multi-site and energy-intensive businesses cut energy cost
+  and hit Net Zero. We start by validating your bills and recovering mis-charges, then
+  consolidate every site onto one energy-data platform (MY ZEERO), sharpen procurement,
+  and design a costed decarbonisation pathway — solar, CHP, heat pumps and HVO.
 
-# 2-3 concrete proof points (results, names, numbers). Specificity builds trust.
+# Concrete proof points (results, names, numbers). Specificity builds trust.
 proof_points:
-  - "Cut energy spend 18% for a mid-size utility in 6 months"
-  - "Trusted by 30+ UK energy teams"
-  - "Onboards in under 2 weeks"
+  - "Shoezone: 90% of 500 stores mis-billed; £160k recovered"
+  - "Parkwood: £171k recovered in 6 months"
+  - "Bighams: £10k recovered through kVA capacity-charge analysis"
+  - "Knight Frank: £3m of energy overcharges identified"
+  - "50bn data points monitored, 4.8 TWh under management via MY ZEERO"
 
-# What makes you different from the alternatives.
+# What makes Equity Energies different from the alternatives.
 differentiators:
-  - "Built specifically for the UK energy market"
-  - "No long-term lock-in"
-  - "Hands-on onboarding, not just software"
+  - "Bureau-as-wedge: we find and recover money before you change a thing — no switch required to start"
+  - "One platform across every site (MY ZEERO): live consumption, automated invoice data, capacity-charge analysis"
+  - "EII / British Industry Supercharger relief expertise for energy-intensive manufacturers"
+  - "Part of DCC Energy (FTSE 100): procurement, on-site generation and delivery in one group"
 
 # The pains your prospects feel that you solve.
 pain_points:
-  - "Rising and unpredictable energy costs"
-  - "Pressure to evidence decarbonisation progress"
-  - "Manual, spreadsheet-driven energy reporting"
+  - "Messy multi-site billing and mis-charges across a fragmented estate"
+  - "Rising non-commodity and capacity charges eroding margin"
+  - "ESOS Phase 4, SECR and SBTi obligations with hard deadlines"
+  - "Fragmented contracts and meters after acquisitions or expansion"
+  - "No full in-house energy team to stay on top of it"
 
 # The call to action you want in outreach (what you're asking for).
-cta: "a quick 15-minute call to see if it's a fit"
+cta: "a quick 20-minute call to see what's recoverable"
