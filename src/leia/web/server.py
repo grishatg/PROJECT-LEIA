@@ -377,6 +377,47 @@ def send(
     return {"counts": report.counts, "notes": components.notes, "dry_run": dry_run}
 
 
+@app.post("/api/tasks/tick", dependencies=_AUTH)
+def tasks_tick(
+    payload: dict = Body(default={}),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Advance conversations: pull the inbox, reply (auto-send `continue`, gate
+    meetings, suppress opt-outs). Driven by a scheduler (e.g. a Render cron job).
+
+    Until real inbox providers (Instantly/Unipile) are wired, the inbox is a stub
+    — an empty tick is a safe no-op. The hybrid autonomy + suppression logic is
+    fully exercised by the offline test suite.
+    """
+    from leia.conversation import advance_conversations
+    from leia.inbox.stub import StubInbox
+
+    settings = get_settings()
+    app_settings = load_app_settings()
+    try:
+        components = build_components(
+            dry_run=bool(payload.get("dry_run", False)),
+            settings=settings,
+            app_settings=app_settings,
+        )
+    except RuntimeError as e:
+        raise HTTPException(400, str(e)) from e
+    if components.brain is None:
+        raise HTTPException(400, "A brain is required to advance conversations.")
+
+    counts = advance_conversations(
+        session,
+        inbox=StubInbox(),  # TODO: real Instantly/Unipile inbox providers
+        brain=components.brain,
+        channel_for=components.channel_for,
+        value_prop=load_value_prop(),
+        guidelines=load_message_guidelines(),
+        booking_url=settings.booking_url,
+        reply_cap=app_settings.limits.daily_send_cap,
+    )
+    return {"counts": counts, "notes": components.notes}
+
+
 @app.get("/api/export/prospects.csv", dependencies=_AUTH)
 def export_prospects(session: Session = Depends(get_session)):
     """Download every prospect (+ enrichment, latest score, draft status) as CSV."""
