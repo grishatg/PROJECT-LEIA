@@ -39,6 +39,7 @@ from leia.models import (
     EmailStatus,
     EnrichedContact,
     EnrichmentStatus,
+    OutreachEvent,
     OutreachLog,
     Prospect,
     ScoredLead,
@@ -48,6 +49,7 @@ from leia.models import (
 )
 from leia.schemas import ProspectFacts
 from leia.sources.base import SignalSource
+from leia.suppression import is_suppressed
 
 
 @dataclass
@@ -262,6 +264,10 @@ def ingest(session: Session, source: SignalSource, account_id: str = "local") ->
                     )
                 )
                 prospect.enrichment_status = EnrichmentStatus.ENRICHED
+            # Suppression check: a re-sourced opt-out stays excluded (enrich/score/
+            # draft all filter suppressed=False).
+            if rs.email and is_suppressed(session, rs.email, account_id):
+                prospect.suppressed = True
         sig.status = SignalStatus.PROCESSED
 
     session.commit()
@@ -433,10 +439,27 @@ def send_approved(
     )
     sent = 0
     failed = 0
+    skipped = 0
     for d in session.execute(q).scalars().all():
         lead = session.get(ScoredLead, d.scored_lead_id)
         prospect = session.get(Prospect, lead.prospect_id)
         ec = prospect.enrichment
+        # Hard suppression guard: never send to a do-not-contact address.
+        if d.channel == "email" and ec and is_suppressed(session, ec.email, account_id):
+            d.status = DraftStatus.REJECTED
+            session.add(
+                OutreachLog(
+                    account_id=account_id,
+                    draft_message_id=d.id,
+                    channel=d.channel,
+                    provider=None,
+                    provider_message_id=None,
+                    event=OutreachEvent.FAILED,
+                    payload_json={"skipped": "suppressed"},
+                )
+            )
+            skipped += 1
+            continue
         message = OutboundMessage(
             channel=d.channel,
             to_email=(ec.email if ec else None),
@@ -466,7 +489,7 @@ def send_approved(
             break
 
     session.commit()
-    return StageReport(counts={"sent": sent, "failed": failed})
+    return StageReport(counts={"sent": sent, "failed": failed, "skipped": skipped})
 
 
 def run_until_queue(

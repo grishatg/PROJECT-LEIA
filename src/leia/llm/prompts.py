@@ -60,6 +60,34 @@ def render_draft_system(
     )
 
 
+def render_converse_system(
+    converse_system_md: str,
+    vp: ValuePropConfig,
+    guidelines: str,
+    booking_url: str | None,
+) -> str:
+    booking = booking_url or "(no booking link configured — propose times in prose)"
+    return (
+        f"{converse_system_md.strip()}\n\n"
+        f"## Booking link\n{booking}\n\n"
+        f"## Value proposition\n{render_value_prop_block(vp)}\n\n"
+        f"## Message guidelines\n{guidelines.strip()}"
+    )
+
+
+def render_history(history: list[dict], facts: ProspectFacts) -> str:
+    """Render the conversation so far for the user turn (newest last)."""
+    lines = [f"Conversation with {facts.full_name}"]
+    if facts.company_name:
+        lines[0] += f" ({facts.company_name})"
+    lines.append("")
+    for turn in history:
+        who = "Them" if turn.get("direction") == "inbound" else "You"
+        lines.append(f"{who}: {turn.get('body', '').strip()}")
+    lines.append("\nWrite the next reply from You.")
+    return "\n".join(lines)
+
+
 def render_facts(facts: ProspectFacts) -> str:
     lines = [f"Full name: {facts.full_name}"]
     optional = [

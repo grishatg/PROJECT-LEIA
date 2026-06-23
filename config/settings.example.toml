@@ -32,3 +32,19 @@ max_prospects = 100
 signals_days_back = 90
 # Signal types to filter on. Run `leia config-check` to see valid values from Lusha.
 signal_types = ["promotion", "companyChange"]
+
+[companies_house]
+# UK discovery source (free API). Find companies by SIC code + location, then
+# emit their officers as prospects with a "why-now" trigger. Needs
+# COMPANIES_HOUSE_API_KEY in .env. Mind the 600 requests / 5 min rate limit.
+sic_codes = []          # e.g. ["10110", "52100"] — Tier A/B EE sectors
+location = ""           # e.g. "Manchester" (blank = anywhere in the UK)
+max_companies = 20
+officers_per_company = 2
+
+[jobspy]
+# Public job-posting hiring signals (optional `python-jobspy` dependency).
+search_terms = ["energy manager", "head of procurement"]
+location = "United Kingdom"
+sites = ["indeed", "linkedin"]
+results = 20

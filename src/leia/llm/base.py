@@ -13,7 +13,7 @@ from typing import Protocol, runtime_checkable
 from pydantic import BaseModel
 
 from leia.config import ICPConfig, ValuePropConfig
-from leia.schemas import DraftResult, ProspectFacts, ScoreResult
+from leia.schemas import ConversationReply, DraftResult, ProspectFacts, ScoreResult
 
 
 class ScoreOutput(BaseModel):
@@ -36,6 +36,21 @@ class DraftOutput(BaseModel):
     cost_usd: float = 0.0
 
 
+class ConverseOutput(BaseModel):
+    result: ConversationReply
+    model_id: str
+    tokens_in: int = 0
+    tokens_out: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    cost_usd: float = 0.0
+
+
+# A conversation turn fed to ``converse`` — plain dicts to avoid ORM coupling:
+# {"direction": "inbound"|"outbound", "body": str}.
+ConversationTurn = dict
+
+
 @runtime_checkable
 class Brain(Protocol):
     def score(
@@ -52,4 +67,16 @@ class Brain(Protocol):
         channel: str,
     ) -> DraftOutput:
         """Write a personalized message for the given channel."""
+        ...
+
+    def converse(
+        self,
+        *,
+        history: list[ConversationTurn],
+        facts: ProspectFacts,
+        value_prop: ValuePropConfig,
+        guidelines: str,
+        booking_url: str | None = None,
+    ) -> ConverseOutput:
+        """Continue a conversation; return the reply + classified intent."""
         ...

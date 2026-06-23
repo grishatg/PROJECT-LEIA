@@ -41,6 +41,31 @@ class DraftResult(BaseModel):
     body: str
 
 
+ReplyIntentLiteral = Literal[
+    "continue",
+    "question",
+    "negative",
+    "out_of_office",
+    "unsubscribe",
+    "propose_meeting",
+    "confirm_meeting",
+    "escalate",
+]
+
+
+class ConversationReply(BaseModel):
+    """Claude's reply within an ongoing conversation (Phase 2).
+
+    ``intent`` drives the hybrid autonomy: ``continue`` may auto-send under caps;
+    anything proposing/confirming a meeting, or ``escalate``/``unsubscribe``,
+    routes to the human approval gate (or the suppression list).
+    """
+
+    body: str
+    intent: ReplyIntentLiteral
+    proposed_times: list[str] = Field(default_factory=list)
+
+
 def tier_for_score(score: int) -> str:
     """Map a 0-100 score to a tier band (A >= 80, B >= 60, else C)."""
     if score >= 80:

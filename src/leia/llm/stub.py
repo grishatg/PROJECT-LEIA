@@ -8,10 +8,19 @@ plausible scored drafts before paying for real Claude calls.
 from __future__ import annotations
 
 from leia.config import ICPConfig, ValuePropConfig
-from leia.llm.base import DraftOutput, ScoreOutput
-from leia.schemas import DraftResult, ProspectFacts, ScoreResult, tier_for_score
+from leia.llm.base import ConversationTurn, ConverseOutput, DraftOutput, ScoreOutput
+from leia.replies.parse import looks_like_opt_out
+from leia.schemas import (
+    ConversationReply,
+    DraftResult,
+    ProspectFacts,
+    ScoreResult,
+    tier_for_score,
+)
 
 STUB_MODEL = "stub"
+
+_MEETING_HINT = ("call", "meeting", "meet", "demo", "chat", "time", "calendar", "book")
 
 
 def _haystack(facts: ProspectFacts) -> str:
@@ -83,3 +92,39 @@ class StubBrain:
         )
         result = DraftResult(subject=subject, body=body)
         return DraftOutput(result=result, model_id=STUB_MODEL)
+
+    def converse(
+        self,
+        *,
+        history: list[ConversationTurn],
+        facts: ProspectFacts,
+        value_prop: ValuePropConfig,
+        guidelines: str,
+        booking_url: str | None = None,
+    ) -> ConverseOutput:
+        """Deterministic reply for offline tests: read the last inbound message and
+        branch on opt-out / meeting-intent / otherwise continue."""
+        first = facts.full_name.split()[0] if facts.full_name else "there"
+        last_inbound = next(
+            (m.get("body", "") for m in reversed(history) if m.get("direction") == "inbound"),
+            "",
+        )
+        low = last_inbound.lower()
+
+        if looks_like_opt_out(last_inbound):
+            reply = ConversationReply(
+                body=f"Understood, {first} — I’ll take you off the list. Apologies for the intrusion.",  # noqa: E501
+                intent="unsubscribe",
+            )
+        elif any(h in low for h in _MEETING_HINT):
+            link = f" You can grab a time here: {booking_url}" if booking_url else ""
+            reply = ConversationReply(
+                body=f"Great, {first} — happy to find 20 minutes.{link}".strip(),
+                intent="propose_meeting",
+            )
+        else:
+            reply = ConversationReply(
+                body=f"Thanks {first}, that’s helpful — {value_prop.cta}?",
+                intent="continue",
+            )
+        return ConverseOutput(result=reply, model_id=STUB_MODEL)
