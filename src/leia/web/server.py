@@ -284,6 +284,36 @@ def _build_source(source: str, *, dry_run: bool, input_csv: str | None, dataset:
             max_results=app_settings.lusha.max_prospects,
         )
 
+    if source == "companies_house":
+        if dry_run:
+            from leia.sources.discovery_stub import StubCompaniesHouseSource
+
+            return StubCompaniesHouseSource()
+        if not settings.companies_house_api_key:
+            raise HTTPException(400, "COMPANIES_HOUSE_API_KEY is required for companies_house")
+        from leia.sources.companies_house import CompaniesHouseSource
+
+        ch = app_settings.companies_house
+        return CompaniesHouseSource(
+            settings.companies_house_api_key,
+            sic_codes=ch.sic_codes,
+            location=ch.location,
+            max_companies=ch.max_companies,
+            officers_per_company=ch.officers_per_company,
+        )
+
+    if source == "jobspy":
+        if dry_run:
+            from leia.sources.discovery_stub import StubJobSpySource
+
+            return StubJobSpySource()
+        from leia.sources.jobspy import JobSpySource
+
+        js = app_settings.jobspy
+        return JobSpySource(
+            search_terms=js.search_terms, location=js.location, sites=js.sites, results=js.results
+        )
+
     raise HTTPException(400, f"Unknown source '{source}'")
 
 

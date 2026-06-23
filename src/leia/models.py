@@ -103,6 +103,44 @@ class OutreachEvent:
     FAILED = "failed"
 
 
+class ThreadStatus:
+    ACTIVE = "active"
+    AWAITING_HUMAN = "awaiting_human"
+    MEETING_LINK_SHARED = "meeting_link_shared"
+    BOOKED = "booked"
+    CLOSED = "closed"
+
+
+class MessageDirection:
+    INBOUND = "inbound"
+    OUTBOUND = "outbound"
+
+
+class ReplyIntent:
+    """Classified intent of an inbound reply (Phase 2 conversation engine)."""
+
+    CONTINUE = "continue"
+    QUESTION = "question"
+    NEGATIVE = "negative"
+    OUT_OF_OFFICE = "out_of_office"
+    UNSUBSCRIBE = "unsubscribe"
+    PROPOSE_MEETING = "propose_meeting"
+    CONFIRM_MEETING = "confirm_meeting"
+    ESCALATE = "escalate"
+
+
+class SuppressionSource:
+    OPT_OUT = "opt_out"      # auto-added from an unsubscribe/negative reply
+    MANUAL = "manual"
+    IMPORT = "import"
+
+
+class MeetingStatus:
+    LINK_SHARED = "link_shared"
+    BOOKED = "booked"
+    CANCELLED = "cancelled"
+
+
 # ── Base + mixins ──────────────────────────────────────────────────────────
 
 
@@ -307,6 +345,68 @@ class AppConfig(TenantMixin, TimestampMixin, Base):
     value: Mapped[str] = mapped_column(Text)
 
 
+class SuppressionList(PKMixin, TenantMixin, TimestampMixin, Base):
+    """Do-not-contact list (UK PECR/GDPR backbone). Email-only granularity.
+
+    Auto-populated when an inbound reply is classified as unsubscribe/opt-out.
+    The durable, cross-run source of truth that drives ``Prospect.suppressed``;
+    checked at ingest and as a hard guard before every send.
+    """
+
+    __tablename__ = "suppression_list"
+    __table_args__ = (
+        UniqueConstraint("account_id", "email", name="uq_suppression_email"),
+    )
+
+    email: Mapped[str] = mapped_column(String(320), index=True)
+    reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    source: Mapped[str] = mapped_column(String(20), default=SuppressionSource.OPT_OUT)
+
+
+class ConversationThread(PKMixin, TenantMixin, TimestampMixin, Base):
+    """One ongoing conversation with a prospect on a channel (Phase 2)."""
+
+    __tablename__ = "conversation_threads"
+
+    prospect_id: Mapped[str] = mapped_column(ForeignKey("prospects.id"), index=True)
+    channel: Mapped[str] = mapped_column(String(20))
+    status: Mapped[str] = mapped_column(String(30), default=ThreadStatus.ACTIVE)
+    last_intent: Mapped[str | None] = mapped_column(String(30), nullable=True)
+
+    messages: Mapped[list[Message]] = relationship(
+        back_populates="thread", cascade="all, delete-orphan"
+    )
+
+
+class Message(PKMixin, TenantMixin, TimestampMixin, Base):
+    """A single inbound or outbound message within a conversation thread."""
+
+    __tablename__ = "messages"
+
+    thread_id: Mapped[str] = mapped_column(ForeignKey("conversation_threads.id"), index=True)
+    direction: Mapped[str] = mapped_column(String(10))
+    body: Mapped[str] = mapped_column(Text)
+    provider_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    intent: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    thread: Mapped[ConversationThread] = relationship(back_populates="messages")
+
+
+class Meeting(PKMixin, TenantMixin, TimestampMixin, Base):
+    """A meeting surfaced via the booking link (Phase 2). No calendar API."""
+
+    __tablename__ = "meetings"
+
+    prospect_id: Mapped[str] = mapped_column(ForeignKey("prospects.id"), index=True)
+    thread_id: Mapped[str | None] = mapped_column(
+        ForeignKey("conversation_threads.id"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(String(20), default=MeetingStatus.LINK_SHARED)
+    booked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 # All ORM tables, handy for Alembic and tests.
 ALL_TABLES = [
     ICP,
@@ -319,4 +419,8 @@ ALL_TABLES = [
     OutreachLog,
     Campaign,
     AppConfig,
+    SuppressionList,
+    ConversationThread,
+    Message,
+    Meeting,
 ]

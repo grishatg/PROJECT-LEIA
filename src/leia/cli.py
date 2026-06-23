@@ -98,7 +98,14 @@ def config_check() -> None:
         )
 
 
-_VALID_SOURCES = ("manual_csv", "lusha_prospecting", "lusha_signals", "apify_linkedin")
+_VALID_SOURCES = (
+    "manual_csv",
+    "lusha_prospecting",
+    "lusha_signals",
+    "apify_linkedin",
+    "companies_house",
+    "jobspy",
+)
 
 
 @app.command()
@@ -182,7 +189,7 @@ def run(
                 max_results=max_results,
             )
 
-    else:  # lusha_signals
+    elif source == "lusha_signals":
         if dry_run:
             from leia.sources.lusha_stub import StubLushaSignalsSource
 
@@ -204,6 +211,42 @@ def run(
                 days_back=app_settings.lusha.signals_days_back,
                 signal_types=app_settings.lusha.signal_types,
                 max_results=max_results,
+            )
+
+    elif source == "companies_house":
+        if dry_run:
+            from leia.sources.discovery_stub import StubCompaniesHouseSource
+
+            signal_source = StubCompaniesHouseSource()
+        else:
+            if not settings.companies_house_api_key:
+                console.print("[red]COMPANIES_HOUSE_API_KEY is required for companies_house.[/]")
+                raise typer.Exit(code=1)
+            from leia.sources.companies_house import CompaniesHouseSource
+
+            ch = app_settings.companies_house
+            signal_source = CompaniesHouseSource(
+                settings.companies_house_api_key,
+                sic_codes=ch.sic_codes,
+                location=ch.location,
+                max_companies=min(ch.max_companies, limit) if limit else ch.max_companies,
+                officers_per_company=ch.officers_per_company,
+            )
+
+    else:  # jobspy
+        if dry_run:
+            from leia.sources.discovery_stub import StubJobSpySource
+
+            signal_source = StubJobSpySource()
+        else:
+            from leia.sources.jobspy import JobSpySource
+
+            js = app_settings.jobspy
+            signal_source = JobSpySource(
+                search_terms=js.search_terms,
+                location=js.location,
+                sites=js.sites,
+                results=min(js.results, limit) if limit else js.results,
             )
 
     try:

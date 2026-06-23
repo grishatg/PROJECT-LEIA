@@ -13,10 +13,16 @@ from typing import Any
 import anthropic
 
 from leia.config import ICPConfig, ValuePropConfig
-from leia.llm.base import DraftOutput, ScoreOutput
+from leia.llm.base import ConversationTurn, ConverseOutput, DraftOutput, ScoreOutput
 from leia.llm.pricing import cost_usd
-from leia.llm.prompts import render_draft_system, render_facts, render_score_system
-from leia.schemas import DraftResult, ProspectFacts, ScoreResult
+from leia.llm.prompts import (
+    render_converse_system,
+    render_draft_system,
+    render_facts,
+    render_history,
+    render_score_system,
+)
+from leia.schemas import ConversationReply, DraftResult, ProspectFacts, ScoreResult
 
 PROMPTS_DIR = Path("prompts")
 
@@ -46,6 +52,7 @@ class LLMBrain:
         self._draft_md = draft_system_md if draft_system_md is not None else _load_prompt(
             "draft_system.md"
         )
+        self._converse_md: str | None = None  # lazy-loaded on first converse()
 
     def _structured(
         self, *, system_text: str, user_text: str, schema_model: type, tool_name: str
@@ -123,3 +130,25 @@ class LLMBrain:
             tool_name="record_draft",
         )
         return DraftOutput(result=result, **self._usage_fields(usage))
+
+    def converse(
+        self,
+        *,
+        history: list[ConversationTurn],
+        facts: ProspectFacts,
+        value_prop: ValuePropConfig,
+        guidelines: str,
+        booking_url: str | None = None,
+    ) -> ConverseOutput:
+        if self._converse_md is None:
+            self._converse_md = _load_prompt("converse_system.md")
+        system_text = render_converse_system(
+            self._converse_md, value_prop, guidelines, booking_url
+        )
+        result, usage = self._structured(
+            system_text=system_text,
+            user_text=render_history(history, facts),
+            schema_model=ConversationReply,
+            tool_name="record_reply",
+        )
+        return ConverseOutput(result=result, **self._usage_fields(usage))

@@ -34,7 +34,12 @@ class Settings(BaseSettings):
     apify_token: str | None = None
     unipile_api_key: str | None = None
     unipile_dsn: str | None = None
+    companies_house_api_key: str | None = None
     database_url: str | None = None
+
+    # Phase 2: a public Outlook / Microsoft Bookings link shared in conversations
+    # when a meeting is proposed (no calendar API — IT restriction).
+    booking_url: str | None = None
 
     # Supabase (hosted auth + Postgres). The anon key is safe to expose to the
     # browser; the JWT secret is private and used server-side to verify logins.
@@ -117,12 +122,28 @@ class LushaSettings(BaseModel):
     signal_types: list[str] = Field(default_factory=lambda: ["promotion", "companyChange"])
 
 
+class CompaniesHouseSettings(BaseModel):
+    sic_codes: list[str] = Field(default_factory=list)
+    location: str | None = None
+    max_companies: int = 20
+    officers_per_company: int = 2
+
+
+class JobSpySettings(BaseModel):
+    search_terms: list[str] = Field(default_factory=lambda: ["energy manager"])
+    location: str = "United Kingdom"
+    sites: list[str] = Field(default_factory=lambda: ["indeed", "linkedin"])
+    results: int = 20
+
+
 class AppSettings(BaseModel):
     models: ModelSettings = Field(default_factory=ModelSettings)
     limits: LimitSettings = Field(default_factory=LimitSettings)
     scoring: ScoringSettings = Field(default_factory=ScoringSettings)
     paths: PathSettings = Field(default_factory=PathSettings)
     lusha: LushaSettings = Field(default_factory=LushaSettings)
+    companies_house: CompaniesHouseSettings = Field(default_factory=CompaniesHouseSettings)
+    jobspy: JobSpySettings = Field(default_factory=JobSpySettings)
 
 
 # ── Loaders ────────────────────────────────────────────────────────────────
