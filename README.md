@@ -23,9 +23,19 @@ Each stage is a discrete, testable step. Nothing is sent without your approval.
 ```bash
 uv sync
 uv run leia init-db
-# Dry-run uses stub providers: zero spend, zero sends.
+uv run leia dashboard        # open the web control center at http://localhost:8000
+```
+
+> **Use it from anywhere (hosted):** deploy to Render with a Supabase login +
+> database — step-by-step in **[DEPLOY.md](DEPLOY.md)**. Locally, the login is
+> skipped (the app only listens on your own machine).
+
+Then click **Run** (dry-run is on by default — zero spend), **Review** the drafts,
+**Approve** the good ones, and **Send** (dry-run). Everything is also available from
+the CLI:
+
+```bash
 uv run leia run --dry-run --input data/fixtures/contacts.sample.csv
-uv run leia dashboard        # review the drafts, click Approve
 uv run leia send --dry-run   # "sends" only what you approved (stubbed)
 ```
 
@@ -78,7 +88,7 @@ Every source supports `--dry-run` (deterministic stubs, zero spend, zero sends).
 config/      your editable knobs: icp.yaml, value_prop.yaml, message_guidelines.md
 prompts/     stable system prompts for Claude (scoring, drafting)
 src/leia/    the application (models, db, config, pipeline, llm, sources, channels, ...)
-app/         the Streamlit approval dashboard (Phase 1)
+src/leia/web/ the web control center (FastAPI + zero-build HTML): run, review, approve, send
 tests/       offline tests (in-memory DB + a fake Claude client)
 data/        local SQLite DB (gitignored) + sample fixtures
 ```

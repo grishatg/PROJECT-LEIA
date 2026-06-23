@@ -1,0 +1,37 @@
+# Render Blueprint for the LEIA web control center.
+# In Render: New + → Blueprint → pick this repo. Then fill the secret values
+# (sync:false vars) in the dashboard. Database + login live on Supabase.
+services:
+  - type: web
+    name: leia
+    runtime: docker
+    plan: free            # bump to "starter" for always-on (no cold-start sleep)
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      # ── Database (Supabase Postgres connection string) ──
+      - key: DATABASE_URL
+        sync: false
+      # ── Login (Supabase Auth) ──
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      # ── The brain + providers ──
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: LUSHA_API_KEY
+        sync: false
+      - key: INSTANTLY_API_KEY
+        sync: false
+      - key: INSTANTLY_CAMPAIGN_ID
+        sync: false
+      # ── LinkedIn (optional) ──
+      - key: APIFY_TOKEN
+        sync: false
+      - key: UNIPILE_API_KEY
+        sync: false
+      - key: UNIPILE_DSN
+        sync: false

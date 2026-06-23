@@ -282,18 +282,18 @@ def send(
 
 @app.command()
 def dashboard(
-    port: int = typer.Option(8501, help="Port for the Streamlit app."),
+    port: int = typer.Option(8000, help="Port for the web control center."),
+    host: str = typer.Option("127.0.0.1", help="Bind address (local only by default)."),
 ) -> None:
-    """Launch the Streamlit approval queue in your browser."""
-    import subprocess
-    import sys
+    """Launch the web control center in your browser (run, review, approve, send)."""
+    import uvicorn
 
-    app_path = Path(__file__).resolve().parents[2] / "app" / "dashboard.py"
-    console.print(f"[green]Launching dashboard[/] at http://localhost:{port} (Ctrl+C to stop)")
-    subprocess.run(  # noqa: S603 - launching our own bundled Streamlit app
-        [sys.executable, "-m", "streamlit", "run", str(app_path), "--server.port", str(port)],
-        check=False,
+    console.print(
+        f"[green]Launching LEIA[/] at [bold]http://localhost:{port}[/] (Ctrl+C to stop)"
     )
+    if host == "127.0.0.1":
+        console.print("[dim]Local only — not reachable from other devices.[/]")
+    uvicorn.run("leia.web.server:app", host=host, port=port, log_level="warning")
 
 
 if __name__ == "__main__":

@@ -56,7 +56,7 @@ can grow into a multi-tenant SaaS.
 | `src/leia/pipeline.py` | Staged orchestration (Phase 1). |
 | `src/leia/llm/` | Anthropic wrapper + scoring + drafting (Phase 1). |
 | `src/leia/sources/` `enrichment/` `channels/` | Pluggable providers behind protocols. |
-| `app/dashboard.py` | Streamlit approval queue (Phase 1). |
+| `src/leia/web/` | FastAPI web control center: run/review/approve/send/stats/settings (zero-build HTML). |
 | `tests/` | Offline tests: in-memory SQLite + fake Anthropic client. |
 
 ## Commands
@@ -66,7 +66,7 @@ uv sync                 # install deps
 uv run leia init-db     # create the SQLite schema
 uv run leia config-check# validate config files (icp.yaml / value_prop.yaml)
 uv run leia run --dry-run --input data/fixtures/contacts.sample.csv  # full pipeline, stubbed
-uv run leia dashboard   # Streamlit approval queue
+uv run leia dashboard   # web control center at http://localhost:8000 (local only)
 uv run leia send --dry-run  # send APPROVED drafts (stubbed in dry-run)
 uv run pytest           # run the offline test suite
 uv run ruff check .     # lint
@@ -84,7 +84,7 @@ uv run ruff check .     # lint
 
 - **Phase 0 (done):** scaffold, data model, config, test harness, `leia init-db`.
 - **Phase 1 (done):** email MVP end-to-end — manual_csv source + Prospeo enrichment (stub
-  fallback) + Claude scoring + Claude drafting + Streamlit approval queue + gated email send.
+  fallback) + Claude scoring + Claude drafting + web approval queue + gated email send.
   Dry-run mode (`--dry-run`) runs the whole thing with stub providers: zero spend, zero sends.
 - **Phase 2 (next):** LinkedIn — Apify signals + Unipile sending; campaign sequencing.
 - **Phase 3:** auto-send toggle + APScheduler, gated by caps + kill switch.

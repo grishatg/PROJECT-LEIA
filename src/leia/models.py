@@ -294,6 +294,19 @@ class Campaign(PKMixin, TenantMixin, TimestampMixin, Base):
     daily_cap: Mapped[int] = mapped_column(Integer, default=25)
 
 
+class AppConfig(TenantMixin, TimestampMixin, Base):
+    """Small key/value store for editable config that must survive redeploys.
+
+    On a hosted, ephemeral filesystem we can't rely on writing config/icp.yaml,
+    so the web Settings editor persists the ICP YAML here (key="icp_yaml").
+    """
+
+    __tablename__ = "app_config"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text)
+
+
 # All ORM tables, handy for Alembic and tests.
 ALL_TABLES = [
     ICP,
@@ -305,4 +318,5 @@ ALL_TABLES = [
     ApprovalItem,
     OutreachLog,
     Campaign,
+    AppConfig,
 ]

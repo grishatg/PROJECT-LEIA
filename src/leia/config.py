@@ -36,6 +36,12 @@ class Settings(BaseSettings):
     unipile_dsn: str | None = None
     database_url: str | None = None
 
+    # Supabase (hosted auth + Postgres). The anon key is safe to expose to the
+    # browser; the JWT secret is private and used server-side to verify logins.
+    supabase_url: str | None = None
+    supabase_anon_key: str | None = None
+    supabase_jwt_secret: str | None = None
+
 
 @lru_cache
 def get_settings() -> Settings:
