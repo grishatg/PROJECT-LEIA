@@ -28,7 +28,6 @@ from leia.config import (
     ICPConfig,
     get_settings,
     load_app_settings,
-    load_icp,
     load_message_guidelines,
     load_value_prop,
 )
@@ -45,7 +44,13 @@ from leia.models import (
     ScoredLead,
 )
 from leia.pipeline import build_components, run_until_queue, send_approved
+from leia.web.auth import auth_enabled, require_user
+from leia.web.config_store import get_effective_icp, save_icp
 from leia.web.serializers import serialize_approval, serialize_outreach
+
+# Applied to every data route so nothing runs without a verified login (when
+# Supabase is configured). Public routes below intentionally omit it.
+_AUTH = [Depends(require_user)]
 
 _HERE = Path(__file__).resolve().parent
 _REPO_ROOT = _HERE.parents[2]
@@ -79,10 +84,32 @@ def index(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "index.html")
 
 
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(request, "login.html")
+
+
+@app.get("/healthz")
+def healthz() -> dict:
+    """Public health check for the host (Render) — no auth, no DB."""
+    return {"ok": True}
+
+
+@app.get("/api/public-config")
+def public_config() -> dict:
+    """Non-secret config the browser needs to start a Supabase login."""
+    s = get_settings()
+    return {
+        "auth_enabled": auth_enabled(),
+        "supabase_url": s.supabase_url,
+        "supabase_anon_key": s.supabase_anon_key,
+    }
+
+
 # ── Status / stats ────────────────────────────────────────────────────────────
 
 
-@app.get("/api/status")
+@app.get("/api/status", dependencies=_AUTH)
 def status(session: Session = Depends(get_session)) -> dict:
     s = get_settings()
 
@@ -134,7 +161,7 @@ def status(session: Session = Depends(get_session)) -> dict:
     }
 
 
-@app.get("/api/stats")
+@app.get("/api/stats", dependencies=_AUTH)
 def stats(session: Session = Depends(get_session)) -> dict:
     """Daily counts for the last 7 days: drafts created and messages sent."""
     today = datetime.now(UTC).date()
@@ -162,12 +189,12 @@ def stats(session: Session = Depends(get_session)) -> dict:
 # ── Approvals ─────────────────────────────────────────────────────────────────
 
 
-@app.get("/api/approvals")
+@app.get("/api/approvals", dependencies=_AUTH)
 def approvals(session: Session = Depends(get_session)) -> list[dict]:
     return [serialize_approval(session, item) for item in list_pending(session)]
 
 
-@app.post("/api/approvals/{approval_id}/approve")
+@app.post("/api/approvals/{approval_id}/approve", dependencies=_AUTH)
 def approve_one(
     approval_id: str,
     payload: dict = Body(default={}),
@@ -186,7 +213,7 @@ def approve_one(
     return {"id": item.id, "state": item.state}
 
 
-@app.post("/api/approvals/{approval_id}/reject")
+@app.post("/api/approvals/{approval_id}/reject", dependencies=_AUTH)
 def reject_one(
     approval_id: str,
     payload: dict = Body(default={}),
@@ -254,7 +281,7 @@ def _build_source(source: str, *, dry_run: bool, input_csv: str | None, dataset:
     raise HTTPException(400, f"Unknown source '{source}'")
 
 
-@app.post("/api/run")
+@app.post("/api/run", dependencies=_AUTH)
 def run_pipeline(
     payload: dict = Body(default={}),
     session: Session = Depends(get_session),
@@ -267,7 +294,7 @@ def run_pipeline(
 
     settings = get_settings()
     app_settings = load_app_settings()
-    icp = load_icp()
+    icp = get_effective_icp(session)
     vp = load_value_prop()
     guidelines = load_message_guidelines()
 
@@ -297,7 +324,7 @@ def run_pipeline(
     return reports
 
 
-@app.post("/api/send")
+@app.post("/api/send", dependencies=_AUTH)
 def send(
     payload: dict = Body(default={}),
     session: Session = Depends(get_session),
@@ -314,7 +341,7 @@ def send(
     return {"counts": report.counts, "notes": components.notes, "dry_run": dry_run}
 
 
-@app.get("/api/history")
+@app.get("/api/history", dependencies=_AUTH)
 def history(session: Session = Depends(get_session)) -> list[dict]:
     rows = session.execute(
         select(OutreachLog).order_by(OutreachLog.occurred_at.desc()).limit(50)
@@ -325,19 +352,28 @@ def history(session: Session = Depends(get_session)) -> list[dict]:
 # ── Settings (ICP) ────────────────────────────────────────────────────────────
 
 
-@app.get("/api/config/icp")
-def get_icp() -> dict:
-    return load_icp(_ICP_PATH).model_dump()
+@app.get("/api/config/icp", dependencies=_AUTH)
+def get_icp(session: Session = Depends(get_session)) -> dict:
+    return get_effective_icp(session, str(_ICP_PATH)).model_dump()
 
 
-@app.put("/api/config/icp")
-def put_icp(payload: dict = Body(...)) -> dict:
+@app.put("/api/config/icp", dependencies=_AUTH)
+def put_icp(
+    payload: dict = Body(...),
+    session: Session = Depends(get_session),
+) -> dict:
     try:
         cfg = ICPConfig.model_validate(payload)
     except Exception as e:  # noqa: BLE001 - validation message back to the UI
         raise HTTPException(422, f"Invalid ICP: {e}") from e
-    _ICP_PATH.write_text(
-        yaml.safe_dump(cfg.model_dump(), sort_keys=False, allow_unicode=True),
-        encoding="utf-8",
-    )
+    # Persist in the DB (survives redeploys); also best-effort write the file for
+    # local convenience (ignored on a read-only/ephemeral hosted filesystem).
+    save_icp(session, cfg)
+    try:
+        _ICP_PATH.write_text(
+            yaml.safe_dump(cfg.model_dump(), sort_keys=False, allow_unicode=True),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
     return cfg.model_dump()

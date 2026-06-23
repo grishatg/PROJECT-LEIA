@@ -3,10 +3,26 @@
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
+// Supabase auth state (set during boot). When auth is disabled (local mode),
+// SB stays null and requests go out without a token.
+let SB = null;
+let AUTH_ENABLED = false;
+
+async function authHeader() {
+  if (!AUTH_ENABLED || !SB) return {};
+  const { data } = await SB.auth.getSession();
+  return data.session ? { Authorization: "Bearer " + data.session.access_token } : {};
+}
+
 async function api(path, method = "GET", body) {
-  const opts = { method, headers: { "Content-Type": "application/json" } };
+  const headers = { "Content-Type": "application/json", ...(await authHeader()) };
+  const opts = { method, headers };
   if (body !== undefined) opts.body = JSON.stringify(body);
   const res = await fetch(path, opts);
+  if (res.status === 401) {
+    window.location.href = "/login";
+    throw new Error("Please log in again");
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.detail || ("Request failed: " + res.status));
   return data;
@@ -290,5 +306,37 @@ $("#btn-save-icp").addEventListener("click", async () => {
   }
 });
 
-// boot
-loadDashboard();
+// ── Logout ────────────────────────────────────────────────────────────────
+const logoutBtn = $("#btn-logout");
+if (logoutBtn) {
+  logoutBtn.addEventListener("click", async () => {
+    if (SB) await SB.auth.signOut();
+    window.location.href = "/login";
+  });
+}
+
+// ── Boot: check auth, then load the dashboard ───────────────────────────────
+async function boot() {
+  try {
+    const cfg = await fetch("/api/public-config").then((r) => r.json());
+    AUTH_ENABLED = cfg.auth_enabled;
+    if (AUTH_ENABLED) {
+      if (!window.supabase || !cfg.supabase_url || !cfg.supabase_anon_key) {
+        window.location.href = "/login";
+        return;
+      }
+      SB = window.supabase.createClient(cfg.supabase_url, cfg.supabase_anon_key);
+      const { data } = await SB.auth.getSession();
+      if (!data.session) {
+        window.location.href = "/login";
+        return;
+      }
+      if (logoutBtn) logoutBtn.style.display = "";
+    }
+    loadDashboard();
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+boot();

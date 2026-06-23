@@ -190,3 +190,10 @@ input:focus, textarea:focus, select:focus { outline: none; border-color: var(--b
 }
 .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
 .toast.err { background: #c43154; }
+
+/* Login page */
+.login-body { display: grid; place-items: center; min-height: 100vh; padding: 20px; }
+.login-card { width: 100%; max-width: 380px; padding: 32px; }
+.login-card .brand { justify-content: center; padding-bottom: 8px; }
+.login-card form { margin-top: 8px; }
+.login-card .result { text-align: center; color: #c43154; }

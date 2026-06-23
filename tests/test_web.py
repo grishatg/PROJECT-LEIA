@@ -6,12 +6,16 @@ and dry-run/stub providers — no network, no spend, no real sends.
 
 from __future__ import annotations
 
+import time
+
+import jwt
 import pytest
 import yaml
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 
+from leia.config import get_settings
 from leia.db import make_session_factory
 from leia.models import Base
 from leia.web import server
@@ -141,3 +145,60 @@ def test_icp_rejects_bad_threshold(client, tmp_path, monkeypatch):
     monkeypatch.setattr(server, "_ICP_PATH", tmp_path / "icp.yaml")
     bad = {"name": "X", "score_threshold": 999}
     assert client.put("/api/config/icp", json=bad).status_code == 422
+
+
+def test_icp_edit_persists_in_db(client, tmp_path, monkeypatch):
+    icp = client.get("/api/config/icp").json()  # read the bundled default first
+    # Now point the file at a throwaway path so we don't touch the repo's icp.yaml.
+    monkeypatch.setattr(server, "_ICP_PATH", tmp_path / "icp.yaml")
+    icp["score_threshold"] = 77
+    client.put("/api/config/icp", json=icp)
+    # A fresh GET reads back the DB-stored override, not the file.
+    assert client.get("/api/config/icp").json()["score_threshold"] == 77
+
+
+# ── Auth (Supabase JWT) ─────────────────────────────────────────────────────
+
+
+@pytest.fixture()
+def auth_secret(monkeypatch):
+    """Enable auth for a test, then reset the settings cache so other tests are free."""
+    secret = "test-jwt-secret-please-ignore-0123456789abcdef"
+    monkeypatch.setenv("SUPABASE_JWT_SECRET", secret)
+    get_settings.cache_clear()
+    yield secret
+    get_settings.cache_clear()
+
+
+def _token(secret: str) -> str:
+    return jwt.encode(
+        {
+            "sub": "user-1",
+            "email": "me@example.com",
+            "aud": "authenticated",
+            "exp": int(time.time()) + 3600,
+        },
+        secret,
+        algorithm="HS256",
+    )
+
+
+def test_public_config_reports_auth_disabled_by_default(client):
+    assert client.get("/api/public-config").json()["auth_enabled"] is False
+
+
+def test_healthz_is_public(client):
+    assert client.get("/healthz").json() == {"ok": True}
+
+
+def test_api_requires_auth_when_configured(client, auth_secret):
+    # No token -> 401
+    assert client.get("/api/status").status_code == 401
+    # Garbage token -> 401
+    bad = client.get("/api/status", headers={"Authorization": "Bearer not-a-jwt"})
+    assert bad.status_code == 401
+    # Valid Supabase-style token -> 200
+    ok = client.get(
+        "/api/status", headers={"Authorization": f"Bearer {_token(auth_secret)}"}
+    )
+    assert ok.status_code == 200

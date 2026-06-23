@@ -26,6 +26,10 @@ uv run leia init-db
 uv run leia dashboard        # open the web control center at http://localhost:8000
 ```
 
+> **Use it from anywhere (hosted):** deploy to Render with a Supabase login +
+> database — step-by-step in **[DEPLOY.md](DEPLOY.md)**. Locally, the login is
+> skipped (the app only listens on your own machine).
+
 Then click **Run** (dry-run is on by default — zero spend), **Review** the drafts,
 **Approve** the good ones, and **Send** (dry-run). Everything is also available from
 the CLI:
