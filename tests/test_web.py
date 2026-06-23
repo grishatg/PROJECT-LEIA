@@ -48,7 +48,7 @@ def _run_dry(client: TestClient) -> dict:
 def test_index_serves_html(client):
     r = client.get("/")
     assert r.status_code == 200
-    assert "PROJECT-LEIA" in r.text
+    assert "LEIA" in r.text
 
 
 def test_status_starts_empty(client):
@@ -115,6 +115,17 @@ def test_approve_with_edited_body(client):
     # the edit flows through to send (stub) without error
     sent = client.post("/api/send", json={"dry_run": True}).json()
     assert sent["counts"]["sent"] == 1
+
+
+def test_export_prospects_csv(client):
+    _run_dry(client)
+    r = client.get("/api/export/prospects.csv")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/csv")
+    assert "attachment" in r.headers.get("content-disposition", "")
+    lines = r.text.strip().splitlines()
+    assert lines[0].startswith("full_name,company_name,title,email,email_status")
+    assert len(lines) == 6  # header + 5 sample prospects
 
 
 def test_stats_shape(client):

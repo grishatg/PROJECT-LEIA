@@ -1,60 +1,113 @@
-# icp.yaml — WHO to target (your Ideal Customer Profile).
-# This is the single most important file you edit. Claude scores every prospect
-# against these criteria. Run `uv run leia config-check` after editing to validate.
-#
-# The example below is a UK / energy-sector B2B profile. Change everything to suit you.
+# icp.yaml — WHO to target (Equity Energies Ideal Customer Profile).
+# Net Zero energy consultancy (part of DCC Energy). Bureau-as-wedge -> procurement
+# -> Unified Platform / MY ZEERO -> Net Zero pathway -> solar / CHP / HVO.
+# LinkedIn/Lusha can't filter on energy spend, so this converts the playbook into
+# searchable proxies: sector, headcount, geography, seniority, trigger keywords.
+# Run `uv run leia config-check` after editing to validate.
 
-name: "UK Energy B2B"
-version: 1
+name: "Equity Energies — UK mid-market energy buyers"
+version: 2
 
-# Industries / sectors your best customers come from.
+# Sectors our best customers come from (Tier A proven + Tier B workable).
 industries:
-  - "Renewable energy"
-  - "Utilities"
-  - "Energy storage"
-  - "EV charging"
-  - "Energy management / efficiency"
+  - "Food and Beverage Manufacturing"
+  - "Multi-site Retail"
+  - "Hospitality, Leisure and Catering"
+  - "Hotels"
+  - "Logistics, Warehousing and Distribution"
+  - "Housebuilders and Residential Developers"
+  - "Building Materials, Aggregates and Steel"
+  - "Chemicals, Plastics and Packaging"
+  - "Paper and Forest Products"
+  - "Pharmaceuticals and Life Sciences Manufacturing"
+  - "Cold Storage and Food Distribution"
+  - "Manufacturing (general / industrial)"
+  - "Property and Facilities Management"
+  - "Data Centres"
 
-# Company size band (number of employees). Leave a value null to ignore that bound.
+# Headcount band: "real spend, but unlikely to have a full in-house energy team".
 company_size:
-  min: 50
+  min: 150
   max: 5000
 
-# Seniority levels worth contacting.
+# Seniority worth contacting (decision-makers and budget owners).
 seniorities:
   - "Head"
   - "Director"
   - "VP"
   - "C-level"
-  - "Founder"
+  - "Owner"
+  - "Manager"
 
-# Job titles / roles that indicate a fit (keywords; matched loosely by Claude).
+# Job titles across the three buying personas (Finance/Procurement,
+# Operations/Energy/Facilities, Sustainability/ESG). Matched loosely by Claude.
 titles:
+  # Persona 1 — Finance / Procurement
+  - "Finance Director"
+  - "Group Finance Director"
+  - "Chief Financial Officer"
+  - "Financial Controller"
   - "Head of Procurement"
+  - "Procurement Director"
+  - "Head of Indirect Procurement"
+  - "Category Manager"
+  - "Head of Energy Procurement"
+  # Persona 2 — Operations / Energy / Facilities
   - "Energy Manager"
-  - "Sustainability Director"
+  - "Group Energy Manager"
+  - "Head of Energy"
+  - "Facilities Director"
+  - "Head of Facilities"
+  - "Head of Engineering"
   - "Operations Director"
-  - "Chief Technology Officer"
+  - "Head of Operations"
+  - "Estates Director"
+  - "Group Property Manager"
+  # Persona 3 — Sustainability / ESG
+  - "Head of Sustainability"
+  - "Sustainability Director"
+  - "Head of ESG"
+  - "Head of Environment"
+  - "HSEQ Manager"
+  - "Head of Carbon"
 
-# Geographies to include (countries / regions).
+# Geographies to include.
 geographies:
   - "United Kingdom"
-  - "Ireland"
 
-# Positive keywords/technologies that signal a good fit.
+# Positive fit + trigger signals (the more that match, the hotter the lead).
 keywords:
+  - "multi-site"
+  - "estate"
+  - "portfolio"
   - "net zero"
   - "decarbonisation"
+  - "SBTi"
+  - "SECR"
+  - "ESOS"
+  - "EII"
+  - "energy intensive"
+  - "ISO 50001"
+  - "ISO 14001"
+  - "capacity charge"
+  - "procurement"
+  - "renewable"
   - "solar"
-  - "battery storage"
-  - "grid"
+  - "CHP"
 
-# Hard excludes — never contact if any of these match.
+# Hard excludes — never contact if any match (protect time; out of scope).
 exclude:
+  - "public sector"
+  - "NHS"
+  - "council"
+  - "local authority"
+  - "central government"
+  - "government"
+  - "domestic energy"
+  - "residential energy supply"
   - "student"
   - "intern"
-  - "retired"
-  - "competitor"
+  - "micro business"
 
 # Minimum Claude score (0-100) for a prospect to proceed to drafting.
 score_threshold: 60
