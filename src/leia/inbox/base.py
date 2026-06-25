@@ -21,6 +21,10 @@ class InboundReply(BaseModel):
     body: str
     from_email: str | None = None
     from_linkedin_url: str | None = None
+    # Provider-native ids — used to match LinkedIn replies back to a thread/prospect
+    # when no email/profile URL is available (the conversation engine decides how).
+    from_provider_id: str | None = None
+    provider_chat_id: str | None = None
 
 
 @runtime_checkable

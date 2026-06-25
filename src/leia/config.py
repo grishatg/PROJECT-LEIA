@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     apify_token: str | None = None
     unipile_api_key: str | None = None
     unipile_dsn: str | None = None
+    unipile_account_id: str | None = None
     companies_house_api_key: str | None = None
     database_url: str | None = None
 

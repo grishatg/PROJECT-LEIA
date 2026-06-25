@@ -105,12 +105,23 @@ def advance_conversations(
     """Process the inbox once and advance every matched conversation."""
     counts = {
         "inbound": 0, "auto_sent": 0, "awaiting_human": 0,
-        "suppressed": 0, "unmatched": 0,
+        "suppressed": 0, "unmatched": 0, "skipped": 0,
     }
     for reply in inbox.fetch_new():
         prospect = _match_prospect(session, reply, account_id)
         if prospect is None:
             counts["unmatched"] += 1
+            continue
+
+        # Idempotency: re-polling an inbox must not reprocess a message we've
+        # already recorded. Skip anything whose provider_id is already on a Message.
+        already = session.execute(
+            select(Message.id).where(
+                Message.account_id == account_id, Message.provider_id == reply.provider_id
+            )
+        ).first()
+        if reply.provider_id and already:
+            counts["skipped"] += 1
             continue
 
         thread = _get_or_create_thread(session, prospect, reply.channel, account_id)
