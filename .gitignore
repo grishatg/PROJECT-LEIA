@@ -6,6 +6,8 @@
 data/*.db
 data/*.db-journal
 data/*.sqlite3
+# Uploaded contact CSVs (prospect PII — never commit)
+data/uploads/
 
 # Git bundles and patches (portable artifacts, not source)
 *.bundle
