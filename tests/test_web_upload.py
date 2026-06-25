@@ -38,7 +38,8 @@ def test_upload_valid_csv_returns_path_and_row_count():
 
 
 def test_upload_rejects_missing_name_column():
-    r = _client().post("/api/upload", json={"filename": "x.csv", "content": "company,email\nAcme,a@b.c\n"})
+    no_name = "company,email\nAcme,a@b.c\n"
+    r = _client().post("/api/upload", json={"filename": "x.csv", "content": no_name})
     assert r.status_code == 400
     assert "name column" in r.json()["detail"].lower()
 
