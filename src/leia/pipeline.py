@@ -137,9 +137,25 @@ def build_components(
         return StubChannel(channel)
 
     # Researchers find the opener hook. SignalResearcher is free + offline (it only reads
-    # the signal already captured at ingest), so it always runs — even in dry-run. Paid
-    # researchers (web search) are appended later, behind their own key/flag checks.
+    # the signal already captured at ingest), so it always runs — even in dry-run. Web
+    # search is a PAID path: only when configured + flagged on, and listed last so a free
+    # high-confidence signal hook short-circuits it (see research_prospect).
     researchers: list[Researcher] = [SignalResearcher()]
+    if not dry_run and settings.anthropic_api_key and app_settings.research.web_enabled:
+        import anthropic
+
+        from leia.research.web import WebResearcher, anthropic_web_search
+
+        researchers.append(
+            WebResearcher(
+                anthropic_web_search(
+                    anthropic.Anthropic(),
+                    model=app_settings.research.web_model,
+                    max_uses=app_settings.research.web_max_uses,
+                )
+            )
+        )
+        notes.append("web research ON (paid): one web-search per signal-less lead")
 
     return Components(
         brain=brain,

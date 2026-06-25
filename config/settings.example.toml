@@ -19,6 +19,15 @@ daily_send_cap = 25
 # Run the cheap prefilter before the brain to save cost on obvious non-fits.
 use_prefilter = false
 
+[research]
+# Opener hooks make or break reply rate. Signal-derived hooks (a promotion, a job change,
+# an active hire) are always on and free. Web search finds a hook for signal-less leads but
+# costs one Anthropic web-search call per lead — off by default so it can't surprise the
+# daily spend cap. Turn on when you want maximum personalisation.
+web_enabled = false
+web_model = "claude-haiku-4-5"
+web_max_uses = 3
+
 [paths]
 # Config file locations (relative to repo root).
 icp = "config/icp.yaml"

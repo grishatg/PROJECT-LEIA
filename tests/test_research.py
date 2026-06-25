@@ -142,3 +142,101 @@ def test_hook_flows_into_draft_facts(session):
 def test_research_stage_noop_without_researchers(session):
     icp_row, _ = _seed(session, signals={"signals": ["promotion"]})
     assert research(session, [], icp_row, threshold=60).counts["researched"] == 0
+
+
+# ── WebResearcher (paid path, exercised offline with fakes) ──────────────────
+
+
+def test_web_researcher_uses_injected_search_fn():
+    from leia.research.web import WebResearcher
+
+    hook = ResearchHook(
+        text="Opened a new Leeds DC", source="web", url="https://x", confidence="medium"
+    )
+    out = WebResearcher(lambda facts: hook).find_hook(FACTS)
+    assert out is hook
+
+
+def test_web_researcher_skips_when_no_company():
+    from leia.research.web import WebResearcher
+
+    called = {"n": 0}
+
+    def _fn(facts):
+        called["n"] += 1
+        return None
+
+    assert WebResearcher(_fn).find_hook(ProspectFacts(full_name="X")) is None
+    assert called["n"] == 0  # no company => never even searched
+
+
+def test_parse_hook_reads_strict_format():
+    from leia.research.web import parse_hook
+
+    h = parse_hook("HOOK: They opened a Leeds site || URL: https://news/x || CONFIDENCE: high")
+    assert h is not None
+    assert h.source == "web" and h.confidence == "high" and h.url == "https://news/x"
+
+
+def test_parse_hook_none_and_garbage_return_none():
+    from leia.research.web import parse_hook
+
+    assert parse_hook("HOOK: NONE") is None
+    assert parse_hook("no structured line here") is None
+    assert parse_hook("") is None
+
+
+class _FakeBlock:
+    def __init__(self, text):
+        self.type = "text"
+        self.text = text
+
+
+class _FakeResp:
+    def __init__(self, text):
+        self.content = [_FakeBlock(text)]
+
+
+class _FakeAnthropic:
+    def __init__(self, text="", raises=False):
+        self._text = text
+        self._raises = raises
+        self.messages = self
+
+    def create(self, **kwargs):
+        if self._raises:
+            raise RuntimeError("API down")
+        return _FakeResp(self._text)
+
+
+def test_anthropic_web_search_parses_a_hook():
+    from leia.research.web import anthropic_web_search
+
+    client = _FakeAnthropic(
+        "HOOK: Published a 2030 Net Zero target || URL: https://x || CONFIDENCE: medium"
+    )
+    hook = anthropic_web_search(client)(FACTS)
+    assert hook is not None and hook.source == "web"
+
+
+def test_anthropic_web_search_swallows_errors():
+    from leia.research.web import anthropic_web_search
+
+    assert anthropic_web_search(_FakeAnthropic(raises=True))(FACTS) is None
+
+
+def test_engine_short_circuits_on_high_confidence_signal():
+    """A free high-confidence signal hook must skip the paid web researcher entirely."""
+    web_calls = {"n": 0}
+
+    class SpyWeb:
+        name = "web"
+
+        def find_hook(self, facts, **k):
+            web_calls["n"] += 1
+            return ResearchHook(text="web hook", source="web")
+
+    high = StubResearcher(ResearchHook(text="signal hook", source="signal", confidence="high"))
+    best = research_prospect(FACTS, researchers=[high, SpyWeb()])
+    assert best is not None and best.source == "signal"
+    assert web_calls["n"] == 0  # never paid for web research

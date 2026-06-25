@@ -61,6 +61,11 @@ def research_prospect(
         except Exception:  # noqa: BLE001 - a researcher must never crash the pipeline
             hook = None
         if hook and hook.text.strip():
+            # A high-confidence hook is good enough — return now and skip any remaining
+            # researchers. Order matters: list free/strong sources (signal) before paid
+            # ones (web search), so we never pay to research a prospect we already nailed.
+            if hook.confidence == "high":
+                return hook
             hooks.append(hook)
     if not hooks:
         return None
