@@ -69,15 +69,57 @@ function miniScore(score) {
       <span class="score-tier sm ${t.wordLow ? "low" : ""}">${t.word}</span></div>
     <div class="bar-track"><div class="bar-fill ${t.seg}" style="width:${pct}%"></div></div></div>`;
 }
+// Ring variant for the lead-detail drawer (design system: r=50, stroke 10, −90°).
+function scoreRing(score) {
+  const t = tierInfo(score);
+  const pct = Math.max(0, Math.min(100, Number(score) || 0));
+  const C = 2 * Math.PI * 50; // circumference, r=50
+  const offset = C * (1 - pct / 100);
+  return `<div class="score-ring">
+    <svg viewBox="0 0 120 120">
+      <circle class="ring-track" cx="60" cy="60" r="50" fill="none" stroke-width="10"/>
+      <circle class="ring-fill ${t.seg}" cx="60" cy="60" r="50" fill="none" stroke-width="10"
+        stroke-linecap="round" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${offset.toFixed(1)}"
+        transform="rotate(-90 60 60)"/>
+      <text class="ring-num" x="60" y="57" text-anchor="middle">${score ?? "—"}</text>
+      <text class="ring-word ${t.wordLow ? "low" : ""}" x="60" y="76" text-anchor="middle">${t.word.toUpperCase()}</text>
+    </svg></div>`;
+}
 const avatarHue = (i) => ["", "slate", "neutral"][i % 3];
 
 // ── Theme ───────────────────────────────────────────────────────────────────
-function applyTheme(mode) {
-  document.documentElement.setAttribute("data-theme", mode);
-  localStorage.setItem("leia-theme", mode);
+// THEME_CHOICE is the persisted preference: "light" | "dark" | "auto".
+// applyTheme resolves "auto" to the OS setting and writes data-theme.
+let THEME_CHOICE = "light";
+const prefersDark = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+
+function resolveTheme(choice) {
+  if (choice === "auto") return prefersDark && prefersDark.matches ? "dark" : "light";
+  return choice;
 }
+function applyTheme(choice) {
+  THEME_CHOICE = choice === "auto" || choice === "dark" ? choice : "light";
+  localStorage.setItem("leia-theme", THEME_CHOICE);
+  document.documentElement.setAttribute("data-theme", resolveTheme(THEME_CHOICE));
+  syncThemeControls();
+}
+function syncThemeControls() {
+  $$("#theme-segmented .seg-opt").forEach((b) =>
+    b.classList.toggle("active", b.dataset.themeMode === THEME_CHOICE)
+  );
+}
+if (prefersDark) {
+  prefersDark.addEventListener("change", () => {
+    if (THEME_CHOICE === "auto")
+      document.documentElement.setAttribute("data-theme", resolveTheme("auto"));
+  });
+}
+// Sidebar quick-toggle: flip between the two resolved appearances.
 $("#btn-theme").addEventListener("click", () =>
-  applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark")
+  applyTheme(resolveTheme(THEME_CHOICE) === "dark" ? "light" : "dark")
+);
+$$("#theme-segmented .seg-opt").forEach((b) =>
+  b.addEventListener("click", () => applyTheme(b.dataset.themeMode))
 );
 
 // ── Navigation ───────────────────────────────────────────────────────────────
@@ -183,6 +225,7 @@ $("#today-layout").addEventListener("click", () => {
 // ── Prospects ───────────────────────────────────────────────────────────────
 let PROSPECTS = [];
 let FILTER = "all";
+let SEARCH = "";
 async function loadProspects() {
   try {
     PROSPECTS = await api("/api/prospects");
@@ -192,10 +235,17 @@ async function loadProspects() {
   }
 }
 function renderProspects() {
-  const rows = PROSPECTS.filter((p) => FILTER === "all" || tierInfo(p.score).band === FILTER);
+  const q = SEARCH.trim().toLowerCase();
+  const rows = PROSPECTS.filter((p) => {
+    if (FILTER !== "all" && tierInfo(p.score).band !== FILTER) return false;
+    if (!q) return true;
+    return [p.full_name, p.company_name].some((v) => String(v || "").toLowerCase().includes(q));
+  });
   const grid = $("#prospect-grid");
   if (!rows.length) {
-    grid.innerHTML = `<div class="card"><span class="muted">No prospects yet. Find some in Settings → Find prospects.</span></div>`;
+    grid.innerHTML = q || FILTER !== "all"
+      ? `<div class="card"><span class="muted">No matching prospects.</span></div>`
+      : `<div class="card"><span class="muted">No prospects yet. Click “Find more leads” to get started.</span></div>`;
     return;
   }
   grid.innerHTML = rows
@@ -219,6 +269,13 @@ function renderProspects() {
     el.addEventListener("click", () => openDrawer(el.dataset.id))
   );
 }
+// Analytics range selector (visual active-state; backend stats are a fixed window).
+$$("#analytics-range .seg-opt").forEach((b) =>
+  b.addEventListener("click", () => {
+    $$("#analytics-range .seg-opt").forEach((x) => x.classList.toggle("active", x === b));
+  })
+);
+
 $$("#prospect-filters .chip-filter").forEach((b) =>
   b.addEventListener("click", () => {
     FILTER = b.dataset.tier;
@@ -226,6 +283,10 @@ $$("#prospect-filters .chip-filter").forEach((b) =>
     renderProspects();
   })
 );
+$("#prospect-search").addEventListener("input", (e) => {
+  SEARCH = e.target.value;
+  renderProspects();
+});
 
 // ── Lead detail (slide-over) ──────────────────────────────────────────────────
 function closeDrawer() {
@@ -248,7 +309,8 @@ async function openDrawer(id) {
       <div class="drawer-top"><span class="avatar" style="width:48px;height:48px;font-size:16px">${esc(d.initials)}</span>
         <div><div style="font:600 20px/1.2 'Schibsted Grotesk'">${esc(d.full_name)}</div>
           <div class="meta">${esc(role) || "—"}</div></div></div>
-      <div class="detail-block">${scoreBlock(d.score)}</div>
+      <div class="detail-block" style="display:flex; align-items:center; gap:24px; flex-wrap:wrap">
+        ${scoreRing(d.score)}<div style="flex:1; min-width:160px">${scoreBlock(d.score)}</div></div>
       ${d.rationale ? `<div class="detail-block"><h4>Why they fit</h4><div class="detail-text">${esc(d.rationale)}</div></div>` : ""}
       ${
         (d.matched_criteria || []).length
@@ -518,6 +580,154 @@ $("#btn-send").addEventListener("click", async () => {
   } finally {
     btn.disabled = false;
     btn.textContent = orig;
+  }
+});
+
+// ── Run outreach modal (P0) ───────────────────────────────────────────────────
+let RM_FILE = null; // {path, rows, filename} after a successful upload, else null
+let RM_RAW = null;  // the picked File before upload
+
+function rmSource() {
+  const sel = $('#run-modal input[name="rm-source"]:checked');
+  return sel ? sel.value : "lusha_prospecting";
+}
+function rmSyncSourceRows() {
+  const s = rmSource();
+  $("#rm-csv-row").style.display = s === "manual_csv" ? "block" : "none";
+  $("#rm-dataset-row").style.display = s === "apify_linkedin" ? "block" : "none";
+}
+function openRunModal() {
+  // reset to a clean state each open
+  $("#rm-result").style.display = "none";
+  $("#rm-result").innerHTML = "";
+  $("#rm-foot").style.display = "";
+  $("#run-modal-body").style.display = "";
+  rmSyncSourceRows();
+  $("#run-modal-backdrop").classList.add("open");
+  $("#run-modal").classList.add("open");
+}
+function closeRunModal() {
+  $("#run-modal-backdrop").classList.remove("open");
+  $("#run-modal").classList.remove("open");
+}
+$("#btn-open-run-today").addEventListener("click", openRunModal);
+$("#btn-open-run-prospects").addEventListener("click", openRunModal);
+$("#run-modal-close").addEventListener("click", closeRunModal);
+$("#rm-cancel").addEventListener("click", closeRunModal);
+$("#run-modal-backdrop").addEventListener("click", closeRunModal);
+$$('#run-modal input[name="rm-source"]').forEach((r) =>
+  r.addEventListener("change", rmSyncSourceRows)
+);
+
+// File picker + drop-zone
+function rmSetFile(file) {
+  RM_RAW = file || null;
+  RM_FILE = null; // force a fresh upload on Run
+  const dz = $("#rm-dropzone");
+  const info = $("#rm-file-info");
+  if (file) {
+    $("#rm-file-label").textContent = file.name;
+    dz.classList.add("has-file");
+    info.style.display = "block";
+    info.textContent = "Ready to upload on Run.";
+  } else {
+    $("#rm-file-label").textContent = "Choose a CSV file, or drop one here";
+    dz.classList.remove("has-file");
+    info.style.display = "none";
+  }
+}
+$("#rm-file").addEventListener("change", (e) => {
+  const f = e.target.files && e.target.files[0];
+  rmSetFile(f || null);
+});
+const rmDz = $("#rm-dropzone");
+["dragenter", "dragover"].forEach((ev) =>
+  rmDz.addEventListener(ev, (e) => { e.preventDefault(); rmDz.classList.add("drag"); })
+);
+["dragleave", "drop"].forEach((ev) =>
+  rmDz.addEventListener(ev, (e) => { e.preventDefault(); rmDz.classList.remove("drag"); })
+);
+rmDz.addEventListener("drop", (e) => {
+  const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) { $("#rm-file").files = e.dataTransfer.files; rmSetFile(f); }
+});
+
+function readFileText(file) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result);
+    fr.onerror = () => reject(new Error("Could not read that file"));
+    fr.readAsText(file);
+  });
+}
+
+async function refreshAfterRun() {
+  // Refresh whatever is currently relevant — these are all safe no-ops if empty.
+  try { await loadToday(); } catch (e) { /* ignore */ }
+  try {
+    const approvals = await api("/api/approvals");
+    setPending(approvals.length);
+  } catch (e) { /* ignore */ }
+}
+
+$("#rm-run").addEventListener("click", async () => {
+  const btn = $("#rm-run");
+  const orig = btn.innerHTML;
+  const inline = $("#rm-result");
+  inline.style.display = "none";
+  inline.innerHTML = "";
+  btn.disabled = true;
+  btn.textContent = "Working…";
+  try {
+    const source = rmSource();
+    let inputCsv = null;
+
+    if (source === "manual_csv") {
+      if (!RM_RAW && !RM_FILE) throw new Error("Please choose a CSV file first");
+      if (!RM_FILE) {
+        const text = await readFileText(RM_RAW);
+        const up = await api("/api/upload", "POST", { filename: RM_RAW.name, content: text });
+        RM_FILE = up; // {path, rows, filename}
+      }
+      inputCsv = RM_FILE.path;
+    }
+
+    const dataset = source === "apify_linkedin" ? ($("#rm-dataset").value || null) : null;
+    const limit = Number($("#rm-limit").value) || 5;
+
+    const r = await api("/api/run", "POST", {
+      source,
+      dry_run: $("#rm-dry").checked,
+      limit,
+      input_csv: inputCsv,
+      dataset,
+    });
+
+    $("#run-modal-body").style.display = "none";
+    $("#rm-foot").style.display = "none";
+    inline.style.display = "block";
+    inline.innerHTML = `<div class="result">
+      <table>
+        <tr><td>People found</td><td>${r.ingest.prospects}</td></tr>
+        <tr><td>Enriched with email</td><td>${r.enrich.enriched}</td></tr>
+        <tr><td>Scored</td><td>${r.score.scored}</td></tr>
+        <tr><td>Drafts written</td><td>${r.draft.drafted}</td></tr>
+        <tr><td>Queued for review</td><td>${r.enqueue.queued}</td></tr>
+        <tr><td>Claude cost</td><td>$${(r.total_cost_usd || 0).toFixed(4)}</td></tr>
+      </table>
+      ${(r.notes || []).map((n) => `<p class="muted">• ${esc(n)}</p>`).join("")}
+      <button class="btn primary full" id="rm-review" style="margin-top:16px">Review drafts →</button>
+    </div>`;
+    $("#rm-review").addEventListener("click", () => { closeRunModal(); showView("outreach"); });
+    await refreshAfterRun();
+    toast(`Done — ${r.enqueue.queued} draft(s) queued`);
+  } catch (e) {
+    toast(e.message, true);
+    inline.style.display = "block";
+    inline.innerHTML = `<div class="result"><p class="muted">${esc(e.message)}</p></div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = orig;
   }
 });
 

@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,16..72,400;1,16..72,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=ds-1" />
+  <link rel="stylesheet" href="/static/style.css?v=ds-2" />
 </head>
 <body>
   <div class="app">
@@ -65,7 +65,7 @@
           </div>
           <div style="display:flex; gap:10px; align-items:center;">
             <button class="chip-filter" id="today-layout" data-mode="a" title="Switch layout">Focus view</button>
-            <button class="btn primary" data-view="outreach">Start today’s outreach
+            <button class="btn primary" id="btn-open-run-today">Start today’s outreach
               <svg viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11h13M12 6l5 5-5 5"/></svg></button>
           </div>
         </div>
@@ -88,8 +88,14 @@
         <div class="page-head">
           <div><div class="eyebrow">Prospects</div><h1 class="screen">Browse leads</h1>
             <div class="sub">Your scored prospects. Open any card for the full picture.</div></div>
+          <button class="btn primary" id="btn-open-run-prospects">Find more leads
+            <svg viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11h13M12 6l5 5-5 5"/></svg></button>
         </div>
         <div class="filters" id="prospect-filters">
+          <label class="search-box">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="7" cy="7" r="4.5"/><path d="M11 11l3 3" stroke-linecap="round"/></svg>
+            <input type="text" id="prospect-search" placeholder="Search by name or company" autocomplete="off" />
+          </label>
           <button class="chip-filter active" data-tier="all">All</button>
           <button class="chip-filter" data-tier="A">Excellent &amp; strong</button>
           <button class="chip-filter" data-tier="B">Worth a look</button>
@@ -120,6 +126,11 @@
         <div class="page-head">
           <div><div class="eyebrow">Analytics</div><h1 class="screen">How am I doing?</h1>
             <div class="sub">A few calm numbers. Plain language tells you if it’s good.</div></div>
+          <div class="segmented" id="analytics-range">
+            <button class="seg-opt active" data-range="7">7d</button>
+            <button class="seg-opt" data-range="30">30d</button>
+            <button class="seg-opt" data-range="90">90d</button>
+          </div>
         </div>
         <div class="card">
           <div class="card-title" style="margin-bottom:6px;">Outreach activity</div>
@@ -152,6 +163,29 @@
               <div><div class="st">Always ask before sending</div>
                 <div class="sd">Review every message yourself. This is LEIA’s core safety rule.</div></div>
               <button class="toggle on locked" title="Locked on — the approval gate keeps you safe"><span class="knob"></span></button>
+            </div>
+            <div class="setting-row">
+              <div><div class="st">Daily send limit</div>
+                <div class="sd">Keep things personal, not spammy.</div></div>
+              <span class="badge-muted">25 / day</span>
+            </div>
+            <div class="setting-row">
+              <div><div class="st">Default tone</div>
+                <div class="sd">How drafts should sound.</div></div>
+              <span class="badge-muted">Warm &amp; concise ▾</span>
+            </div>
+          </div>
+
+          <div class="group-label">Appearance</div>
+          <div class="setting-group">
+            <div class="setting-row">
+              <div><div class="st">Theme</div>
+                <div class="sd">Light, dark, or follow your system setting.</div></div>
+              <div class="segmented" id="theme-segmented">
+                <button class="seg-opt" data-theme-mode="light">Light</button>
+                <button class="seg-opt" data-theme-mode="dark">Dark</button>
+                <button class="seg-opt" data-theme-mode="auto">Auto</button>
+              </div>
             </div>
           </div>
 
@@ -222,8 +256,69 @@
     <div class="drawer-foot" id="drawer-foot"></div>
   </aside>
 
+  <!-- Run outreach modal -->
+  <div class="modal-backdrop" id="run-modal-backdrop"></div>
+  <div class="modal" id="run-modal" role="dialog" aria-modal="true" aria-labelledby="run-modal-title">
+    <div class="modal-head">
+      <div>
+        <div class="eyebrow">Run outreach</div>
+        <h2 class="modal-title" id="run-modal-title">Let LEIA get to work</h2>
+      </div>
+      <button class="icon-btn" id="run-modal-close" title="Close" aria-label="Close">
+        <svg viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l10 10M16 6 6 16"/></svg>
+      </button>
+    </div>
+
+    <div class="modal-body" id="run-modal-body">
+      <label class="field big-field">How many people should LEIA find?
+        <input type="number" id="rm-limit" value="5" min="1" />
+      </label>
+      <div class="field-help">LEIA stops at this many — it won’t burn through your credits.</div>
+
+      <div class="field-label">Where should LEIA look?</div>
+      <div class="source-choices" id="rm-source-choices">
+        <label class="source-opt"><input type="radio" name="rm-source" value="lusha_prospecting" checked />
+          <span><span class="so-title">Find new people that match my ICP</span>
+            <span class="so-desc">LEIA searches for fresh prospects against your profile.</span></span></label>
+        <label class="source-opt"><input type="radio" name="rm-source" value="manual_csv" />
+          <span><span class="so-title">Upload a CSV of contacts</span>
+            <span class="so-desc">Bring your own list of names and companies.</span></span></label>
+        <label class="source-opt"><input type="radio" name="rm-source" value="lusha_signals" />
+          <span><span class="so-title">Intent signals (people showing buying intent)</span>
+            <span class="so-desc">People actively researching what you offer.</span></span></label>
+        <label class="source-opt"><input type="radio" name="rm-source" value="apify_linkedin" />
+          <span><span class="so-title">LinkedIn / Sales Navigator export</span>
+            <span class="so-desc">From a Sales Navigator scraper run.</span></span></label>
+      </div>
+
+      <div id="rm-csv-row" style="display:none">
+        <div class="field-label">Your CSV file</div>
+        <label class="dropzone" id="rm-dropzone">
+          <input type="file" id="rm-file" accept=".csv" hidden />
+          <svg viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11 14V4M7 8l4-4 4 4M4 15v2a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2"/></svg>
+          <span id="rm-file-label">Choose a CSV file, or drop one here</span>
+        </label>
+        <div class="field-help" id="rm-file-info" style="display:none"></div>
+      </div>
+
+      <label class="field" id="rm-dataset-row" style="display:none">Sales Navigator dataset id
+        <input type="text" id="rm-dataset" placeholder="from your Sales Nav scraper run — see SALES_NAV.md" />
+      </label>
+
+      <label class="checkbox" style="margin-top:4px"><input type="checkbox" id="rm-dry" checked /> Practice run (no spend, no real data)</label>
+    </div>
+
+    <div class="modal-result" id="rm-result" style="display:none"></div>
+
+    <div class="modal-foot" id="rm-foot">
+      <button class="btn text" id="rm-cancel">Cancel</button>
+      <button class="btn primary" id="rm-run">Run
+        <svg viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11h13M12 6l5 5-5 5"/></svg></button>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/static/app.js?v=ds-1"></script>
+  <script src="/static/app.js?v=ds-2"></script>
 </body>
 </html>
