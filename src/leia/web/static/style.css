@@ -340,6 +340,80 @@ label.field, .form label { display:block; font:500 13px/1.4 'Hanken Grotesk'; co
 .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
 .toast.err { background:#7a2f2f; color:#fff; }
 
+/* ── Prospects search box ──────────────────────────────────────────────── */
+.search-box { flex:1; min-width:200px; display:flex; align-items:center; gap:9px;
+  background:var(--surface); border:1px solid var(--border-hover); border-radius:11px; padding:0 14px; }
+.search-box svg { width:16px; height:16px; stroke:var(--text-4); flex:none; }
+.search-box input { flex:1; border:none; background:transparent; color:var(--ink);
+  font:400 13px/1 'Hanken Grotesk'; padding:12px 0; outline:none; }
+.search-box input::placeholder { color:var(--text-4); }
+.search-box:focus-within { border-color:var(--amber); box-shadow:0 0 0 3px var(--amber-tint); }
+
+/* ── Segmented control (theme picker, analytics range) ─────────────────── */
+.segmented { display:inline-flex; gap:2px; padding:3px; background:var(--border-inner);
+  border:1px solid var(--border); border-radius:11px; }
+.seg-opt { font:500 13px/1 'Hanken Grotesk'; color:var(--text-3); background:transparent;
+  border:none; padding:8px 14px; border-radius:8px; cursor:pointer; }
+.seg-opt:hover { color:var(--text-2); }
+.seg-opt.active { background:var(--surface); color:var(--ink); box-shadow:0 1px 2px rgba(0,0,0,.06); }
+html[data-theme="dark"] .seg-opt.active { box-shadow:none; }
+
+/* ── Read-only muted badge (settings) ──────────────────────────────────── */
+.badge-muted { font:500 13px/1 'Hanken Grotesk'; color:var(--text-2); background:var(--border-inner);
+  padding:8px 14px; border-radius:9px; flex:none; }
+
+/* ── Score ring (lead detail) ──────────────────────────────────────────── */
+.score-ring { display:flex; flex-direction:column; align-items:center; gap:8px; }
+.score-ring svg { width:92px; height:92px; }
+.score-ring .ring-track { stroke:var(--ring-track); }
+.score-ring .ring-fill { stroke:var(--amber); }
+html[data-theme="dark"] .score-ring .ring-fill { stroke:var(--amber-light); }
+.score-ring .ring-fill.mid { stroke:var(--amber-mid); }
+.score-ring .ring-fill.low { stroke:var(--score-low); }
+.score-ring .ring-num { font:600 30px 'Schibsted Grotesk'; fill:var(--ink); }
+.score-ring .ring-word { font:500 9px 'Hanken Grotesk'; fill:var(--amber-deep); letter-spacing:.08em; }
+.score-ring .ring-word.low { fill:var(--text-3); }
+
+/* ── Run outreach modal ────────────────────────────────────────────────── */
+.modal-backdrop { position:fixed; inset:0; background:rgba(27,25,21,.34); opacity:0;
+  pointer-events:none; transition:opacity .2s; z-index:50; }
+.modal-backdrop.open { opacity:1; pointer-events:auto; }
+.modal { position:fixed; top:50%; left:50%; transform:translate(-50%,-48%) scale(.98);
+  width:520px; max-width:94vw; max-height:90vh; overflow-y:auto; background:var(--surface);
+  border:1px solid var(--border); border-radius:var(--r-frame); box-shadow:var(--frame-shadow);
+  opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:51;
+  display:flex; flex-direction:column; }
+.modal.open { opacity:1; pointer-events:auto; transform:translate(-50%,-50%) scale(1); }
+.modal-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px;
+  padding:24px 26px 18px; }
+.modal-title { margin:6px 0 0; font:500 22px/1.1 'Schibsted Grotesk'; letter-spacing:-.025em; color:var(--ink); }
+.modal-body { padding:4px 26px 8px; }
+.modal-foot { display:flex; align-items:center; justify-content:flex-end; gap:8px;
+  padding:18px 26px 24px; }
+.big-field input { font:600 22px/1 'Schibsted Grotesk'; padding:14px 16px; }
+.field-help { font:400 12px/1.5 'Hanken Grotesk'; color:var(--text-4); margin:-8px 0 18px; }
+.field-label { font:500 13px/1.4 'Hanken Grotesk'; color:var(--text-2); margin:0 0 10px; }
+
+.source-choices { display:flex; flex-direction:column; gap:8px; margin-bottom:18px; }
+.source-opt { display:flex; align-items:flex-start; gap:11px; padding:13px 15px; cursor:pointer;
+  border:1px solid var(--border); border-radius:var(--r-sm); background:var(--surface); margin:0; }
+.source-opt:hover { border-color:var(--border-hover); }
+.source-opt input { margin:2px 0 0; accent-color:var(--amber-deep); flex:none; }
+.source-opt:has(input:checked) { border-color:var(--amber-tint-border); background:var(--amber-tint); }
+.source-opt .so-title { display:block; font:500 14px/1.3 'Hanken Grotesk'; color:var(--ink); }
+.source-opt .so-desc { display:block; font:400 12px/1.4 'Hanken Grotesk'; color:var(--text-4); margin-top:2px; }
+.source-opt:has(input:checked) .so-title { color:var(--amber-deep); }
+
+.dropzone { display:flex; align-items:center; gap:11px; padding:18px 16px; cursor:pointer;
+  border:1.5px dashed var(--border-hover); border-radius:var(--r-sm); background:var(--surface-alt);
+  color:var(--text-3); font:500 13px/1.3 'Hanken Grotesk'; margin-bottom:8px; }
+.dropzone:hover, .dropzone.drag { border-color:var(--amber); background:var(--amber-tint); color:var(--amber-deep); }
+.dropzone svg { width:20px; height:20px; flex:none; }
+.dropzone.has-file { border-style:solid; border-color:var(--amber-tint-border); background:var(--amber-tint); color:var(--amber-deep); }
+
+.modal-result { padding:0 26px; }
+.modal-result .result { margin-top:0; }
+
 @media (max-width:900px) {
   .stat-grid { grid-template-columns:1fr; } .today-cols { grid-template-columns:1fr; }
   .review { flex-direction:column; } .queue-rail { width:auto; border-left:none;
