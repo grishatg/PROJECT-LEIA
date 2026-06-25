@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,16..72,400;1,16..72,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=ds-2" />
+  <link rel="stylesheet" href="/static/style.css?v=ds-3" />
 </head>
 <body>
   <div class="app">
@@ -123,6 +123,14 @@
             <div id="queue-list"></div>
           </div>
         </div>
+
+        <div id="conversations-section" style="display:none">
+          <div class="conv-head">
+            <h2 class="screen" style="font-size:20px; margin:0 0 4px">Conversations to review</h2>
+            <div class="sub">Replies and openers waiting on you — meetings always need a human.</div>
+          </div>
+          <div id="conversations-host"></div>
+        </div>
       </section>
 
       <!-- ───────── ANALYTICS ───────── -->
@@ -136,22 +144,26 @@
             <button class="seg-opt" data-range="90">90d</button>
           </div>
         </div>
+        <div class="kpi-row" id="kpi-row"></div>
         <div class="card">
-          <div class="card-title" style="margin-bottom:6px;">Outreach activity</div>
-          <div class="muted" style="margin-bottom:18px;">Drafts created over the last 7 days.</div>
+          <div class="card-title" style="margin-bottom:6px;">Outreach sent over time</div>
+          <div class="muted" id="activity-sub" style="margin-bottom:18px;">Messages sent in the selected period.</div>
           <div id="chart-activity"></div>
           <div class="context-line" id="activity-context"></div>
         </div>
-        <div class="card">
-          <div class="card-title" style="margin-bottom:18px;">Your funnel</div>
-          <div id="funnel"></div>
+        <div class="analytics-2col">
+          <div class="card">
+            <div class="card-title" style="margin-bottom:18px;">Reply rate trend</div>
+            <div id="chart-replyrate"></div>
+          </div>
+          <div class="card">
+            <div class="card-title" style="margin-bottom:18px;">Pipeline by stage</div>
+            <div id="pipeline"></div>
+          </div>
         </div>
         <div class="card">
-          <div class="card-title" style="margin-bottom:18px;">Engagement</div>
-          <div class="empty-state">
-            <div><p>Delivered · Opened · Replied</p>
-              <small>Coming soon — needs reply tracking from Instantly and Unipile.</small></div>
-          </div>
+          <div class="card-title" style="margin-bottom:18px;">Lead-score distribution</div>
+          <div id="distribution"></div>
         </div>
       </section>
 
@@ -166,17 +178,50 @@
             <div class="setting-row">
               <div><div class="st">Always ask before sending</div>
                 <div class="sd">Review every message yourself. This is LEIA’s core safety rule.</div></div>
-              <button class="toggle on locked" title="Locked on — the approval gate keeps you safe"><span class="knob"></span></button>
+              <button class="toggle" id="set-always_ask" role="switch" aria-checked="true"><span class="knob"></span></button>
+            </div>
+            <div class="setting-row">
+              <div><div class="st">Pause all outreach</div>
+                <div class="sd">Kill switch — LEIA keeps reading replies, but sends nothing.</div></div>
+              <button class="toggle" id="set-outreach_paused" role="switch" aria-checked="false"><span class="knob"></span></button>
             </div>
             <div class="setting-row">
               <div><div class="st">Daily send limit</div>
                 <div class="sd">Keep things personal, not spammy.</div></div>
-              <span class="badge-muted">25 / day</span>
+              <div class="stepper">
+                <button class="step-btn" id="cap-minus" aria-label="Fewer per day">−</button>
+                <span class="step-val"><span id="set-daily_send_cap">25</span> / day</span>
+                <button class="step-btn" id="cap-plus" aria-label="More per day">+</button>
+              </div>
             </div>
             <div class="setting-row">
               <div><div class="st">Default tone</div>
                 <div class="sd">How drafts should sound.</div></div>
-              <span class="badge-muted">Warm &amp; concise ▾</span>
+              <select class="select" id="set-default_tone"></select>
+            </div>
+            <div class="setting-row">
+              <div><div class="st">Deep web research</div>
+                <div class="sd">Research each lead online for a sharper opener. Uses a little credit per lead.</div></div>
+              <button class="toggle" id="set-research_web_enabled" role="switch" aria-checked="false"><span class="knob"></span></button>
+            </div>
+          </div>
+
+          <div class="group-label">Signals to watch</div>
+          <div class="setting-group">
+            <div class="setting-row">
+              <div><div class="st">Hiring &amp; new funding</div>
+                <div class="sd">Growth usually means budget is moving.</div></div>
+              <button class="toggle" id="set-signal_hiring_funding" role="switch" aria-checked="true"><span class="knob"></span></button>
+            </div>
+            <div class="setting-row">
+              <div><div class="st">New website</div>
+                <div class="sd">A relaunch often signals new priorities.</div></div>
+              <button class="toggle" id="set-signal_new_website" role="switch" aria-checked="true"><span class="knob"></span></button>
+            </div>
+            <div class="setting-row">
+              <div><div class="st">Contract renewal</div>
+                <div class="sd">Timing windows worth catching.</div></div>
+              <button class="toggle" id="set-signal_contract_renewal" role="switch" aria-checked="false"><span class="knob"></span></button>
             </div>
           </div>
 
@@ -323,6 +368,6 @@
 
   <div class="toast" id="toast"></div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/static/app.js?v=ds-2"></script>
+  <script src="/static/app.js?v=ds-3"></script>
 </body>
 </html>

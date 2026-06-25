@@ -130,7 +130,7 @@ function showView(name) {
   if (name === "prospects") loadProspects();
   if (name === "outreach") loadOutreach();
   if (name === "analytics") loadAnalytics();
-  if (name === "settings") loadIcp();
+  if (name === "settings") { loadIcp(); loadSettings(); }
 }
 document.addEventListener("click", (e) => {
   const el = e.target.closest("[data-view]");
@@ -148,8 +148,9 @@ function spark(values) {
 
 async function loadToday() {
   try {
-    const [st, stats, approvals, hist] = await Promise.all([
+    const [st, stats, approvals, hist, convos] = await Promise.all([
       api("/api/status"), api("/api/stats"), api("/api/approvals"), api("/api/history"),
+      api("/api/conversations").catch(() => []),
     ]);
     setPending(approvals.length);
     const hour = new Date().getHours();
@@ -160,10 +161,14 @@ async function loadToday() {
       weekday: "long", day: "numeric", month: "long",
     });
 
+    const mk = stats.kpis && stats.kpis.meetings_booked;
     const cards = [
-      { label: "To contact today", num: st.tiles.queued, spark: stats.drafted, delta: "in your review queue", flat: true },
-      { label: "Replies waiting", num: 0, delta: "soon — needs reply tracking", flat: true },
-      { label: "Meetings booked", num: 0, delta: "soon — Phase 2 booking", flat: true },
+      { label: "To contact today", num: st.tiles.queued, spark: stats.sent,
+        delta: st.tiles.queued ? "in your review queue" : "queue is clear", flat: true },
+      { label: "Replies waiting", num: convos.length, spark: stats.kpis && stats.kpis.reply_rate.spark,
+        delta: convos.length ? "need your reply" : "all caught up", flat: convos.length === 0 },
+      { label: "Meetings booked", num: mk ? mk.value : 0, spark: mk && mk.spark,
+        delta: mk ? deltaText(mk.delta, "").txt : "—", flat: !mk || !mk.delta },
     ];
     $("#today-stats").innerHTML = cards
       .map(
@@ -269,10 +274,13 @@ function renderProspects() {
     el.addEventListener("click", () => openDrawer(el.dataset.id))
   );
 }
-// Analytics range selector (visual active-state; backend stats are a fixed window).
+// Analytics range selector → reloads the stats for that window.
+let ANALYTICS_PERIOD = "7d";
 $$("#analytics-range .seg-opt").forEach((b) =>
   b.addEventListener("click", () => {
     $$("#analytics-range .seg-opt").forEach((x) => x.classList.toggle("active", x === b));
+    ANALYTICS_PERIOD = b.dataset.range + "d";
+    loadAnalytics();
   })
 );
 
@@ -375,6 +383,60 @@ async function loadOutreach() {
     QI = 0;
     EDITING = false;
     renderOutreach();
+    loadConversations();
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+async function loadConversations() {
+  try {
+    const convos = await api("/api/conversations");
+    const section = $("#conversations-section");
+    const host = $("#conversations-host");
+    if (!convos.length) {
+      section.style.display = "none";
+      host.innerHTML = "";
+      return;
+    }
+    section.style.display = "block";
+    host.innerHTML = convos
+      .map((c) => {
+        const intent = (c.last_intent || (c.is_opener ? "opener" : "reply")).replace(/_/g, " ");
+        const their = c.their_message
+          ? `<div class="conv-quote them"><strong>Them:</strong> ${esc(c.their_message)}</div>`
+          : "";
+        const draft = c.draft_reply
+          ? `<div class="conv-draft">${esc(c.draft_reply)}</div>`
+          : `<div class="muted">No draft yet.</div>`;
+        return `<div class="conv-card">
+          <div class="conv-top"><span class="avatar" style="width:34px;height:34px;font-size:12px">${esc(initials(c.name))}</span>
+            <div class="grow"><div class="conv-name">${esc(c.name)}</div>
+              <div class="conv-meta">${esc([c.company, c.channel].filter(Boolean).join(" · ")) || "—"}</div></div>
+            <span class="intent-pill">${esc(intent)}</span></div>
+          ${their}${draft}
+          <div class="conv-actions">
+            <button class="btn primary" data-conv-send="${esc(c.thread_id)}">Approve &amp; send</button>
+            <button class="btn secondary" data-conv-booked="${esc(c.thread_id)}">Mark booked</button>
+          </div></div>`;
+      })
+      .join("");
+    $$("#conversations-host [data-conv-send]").forEach((b) =>
+      b.addEventListener("click", () => convAction(b.dataset.convSend, "send"))
+    );
+    $$("#conversations-host [data-conv-booked]").forEach((b) =>
+      b.addEventListener("click", () => convAction(b.dataset.convBooked, "mark-booked"))
+    );
+  } catch (e) {
+    /* conversations are an optional surface — never block the review queue */
+  }
+}
+
+async function convAction(tid, action) {
+  try {
+    await api(`/api/conversations/${tid}/${action}`, "POST", {});
+    toast(action === "send" ? "Sent" : "Marked booked");
+    loadConversations();
   } catch (e) {
     toast(e.message, true);
   }
@@ -407,9 +469,9 @@ function renderOutreach() {
       <span class="pill amber">Score ${c.score ?? "—"}</span></div>
     ${bodyView}
     <div class="tone"><span class="tone-label">Adjust tone</span>
-      <span class="tone-chip">Warmer</span><span class="tone-chip">Shorter</span><span class="tone-chip">More direct</span></div>
+      <span class="tone-chip" data-adjust="warmer">Warmer</span><span class="tone-chip" data-adjust="shorter">Shorter</span><span class="tone-chip" data-adjust="more_direct">More direct</span></div>
     <div class="msg-actions">
-      <button class="btn primary" id="btn-approve">Approve
+      <button class="btn primary" id="btn-approve">Approve &amp; send
         <svg viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11h13M12 6l5 5-5 5"/></svg></button>
       <button class="btn secondary" id="btn-edit">${EDITING ? "Done" : "Edit"}</button>
       <button class="btn text" id="btn-reject">Not a fit</button>
@@ -429,8 +491,25 @@ function renderOutreach() {
   $("#btn-approve").addEventListener("click", () => decide(c, "approve"));
   $("#btn-reject").addEventListener("click", () => decide(c, "reject"));
   $$("#msg-host .tone-chip").forEach((ch) =>
-    ch.addEventListener("click", () => toast("Tone adjust is coming soon"))
+    ch.addEventListener("click", () => retone(c, ch.dataset.adjust))
   );
+}
+
+async function retone(c, adjustment) {
+  const chips = $$("#msg-host .tone-chip");
+  chips.forEach((ch) => ch.classList.add("busy"));
+  toast("Adjusting tone…");
+  try {
+    const r = await api(`/api/approvals/${c.id}/retone`, "POST", { adjustment });
+    const idx = QUEUE.findIndex((x) => x.id === c.id);
+    if (idx >= 0) { QUEUE[idx].subject = r.subject; QUEUE[idx].body = r.body; }
+    EDITING = false;
+    renderOutreach();
+    toast("Tone updated");
+  } catch (e) {
+    toast(e.message, true);
+    chips.forEach((ch) => ch.classList.remove("busy"));
+  }
 }
 async function decide(c, action) {
   try {
@@ -442,7 +521,14 @@ async function decide(c, action) {
         if (bod && bod.value !== (c.body || "")) body.edited_body = bod.value;
       }
       await api(`/api/approvals/${c.id}/approve`, "POST", body);
-      toast("Approved — ready to send");
+      // Approve & send: dispatch the now-approved draft right away.
+      try {
+        const r = await api("/api/send", "POST", { dry_run: false });
+        const n = (r.counts && r.counts.sent) || 0;
+        toast(n ? "Approved & sent" : "Approved — will send shortly");
+      } catch (e) {
+        toast("Approved (sending shortly)");
+      }
     } else {
       await api(`/api/approvals/${c.id}/reject`, "POST", {});
       toast("Marked not a fit");
@@ -478,28 +564,56 @@ function areaChart(values, labels) {
     <circle cx="${X(n - 1).toFixed(0)}" cy="${Y(values[n - 1]).toFixed(0)}" r="4" fill="var(--amber)"/>
     ${ticks}</svg>`;
 }
+function deltaText(delta, suffix) {
+  if (!delta) return { cls: "flat", txt: "No change vs previous" };
+  const up = delta > 0;
+  return { cls: up ? "" : "down", txt: `${up ? "↑" : "↓"} ${Math.abs(delta)}${suffix || ""} vs previous` };
+}
+function kpiCard(label, kpi) {
+  const d = deltaText(kpi.delta, kpi.suffix);
+  return `<div class="kpi"><div class="kpi-label">${label}</div>
+    <div class="kpi-mid"><div class="kpi-num">${kpi.value}${kpi.suffix || ""}</div>${spark(kpi.spark || [])}</div>
+    <div class="kpi-delta ${d.cls}">${d.txt}</div></div>`;
+}
 async function loadAnalytics() {
   try {
-    const [st, stats] = await Promise.all([api("/api/status"), api("/api/stats")]);
-    $("#chart-activity").innerHTML = areaChart(stats.drafted, stats.labels);
-    const total = stats.drafted.reduce((a, b) => a + b, 0);
-    $("#activity-context").textContent = total
-      ? `${total} draft${total === 1 ? "" : "s"} created this week`
-      : "No drafts yet this week";
+    const stats = await api("/api/stats?period=" + ANALYTICS_PERIOD);
+    const k = stats.kpis;
+    $("#kpi-row").innerHTML =
+      kpiCard("Reply rate", k.reply_rate) +
+      kpiCard("Meetings booked", k.meetings_booked) +
+      kpiCard("Avg lead score", k.avg_lead_score);
 
-    const t = st.tiles;
-    const steps = [
-      ["Prospects found", t.prospects], ["Enriched", t.enriched],
-      ["Awaiting review", t.queued], ["Approved", t.approved], ["Sent", t.sent],
-    ];
-    const max = Math.max(1, ...steps.map((s) => s[1]));
-    $("#funnel").innerHTML = steps
+    $("#chart-activity").innerHTML = areaChart(stats.sent, stats.labels);
+    const totalSent = stats.sent.reduce((a, b) => a + b, 0);
+    $("#activity-context").textContent = totalSent
+      ? `${totalSent} message${totalSent === 1 ? "" : "s"} sent in this period`
+      : "No messages sent yet in this period";
+
+    const rr = stats.reply_rate_trend;
+    $("#chart-replyrate").innerHTML = areaChart(rr.values, rr.labels);
+
+    const pmax = Math.max(1, ...stats.pipeline.map((p) => p.count));
+    $("#pipeline").innerHTML = stats.pipeline
       .map(
-        ([lbl, v]) => `<div class="funnel-row"><span class="lbl">${lbl}</span>
-        <div class="bar-wrap"><span class="bar" style="width:${Math.max(2, (v / max) * 100)}%"></span>
-        <span class="val">${v}</span></div></div>`
+        (p) => `<div class="pipe-row"><span class="lbl">${esc(p.stage)}</span>
+        <div class="bar-wrap"><span class="bar" style="width:${Math.max(2, (p.count / pmax) * 100)}%"></span>
+        <span class="val">${p.count}</span></div></div>`
       )
       .join("");
+
+    const dmax = Math.max(1, ...stats.score_distribution.map((d) => d.count));
+    $("#distribution").innerHTML =
+      `<div class="dist">` +
+      stats.score_distribution
+        .map((d, i) => {
+          const cls = i <= 1 ? "low" : i === 2 ? "mid" : "";
+          return `<div class="dist-col"><span class="dist-val">${d.count}</span>
+            <div class="dist-bar ${cls}" style="height:${Math.max(3, (d.count / dmax) * 116)}px"></div>
+            <span class="dist-lbl">${esc(d.band)}</span></div>`;
+        })
+        .join("") +
+      `</div>`;
   } catch (e) {
     toast(e.message, true);
   }
@@ -536,6 +650,69 @@ function renderKeys(keys) {
     )
     .join("");
 }
+// ── Settings: runtime knobs (always-ask, kill switch, cap, tone, signals) ──
+let SETTINGS = {};
+let TONE_OPTIONS = [];
+const TOGGLE_KEYS = [
+  "always_ask", "outreach_paused", "research_web_enabled",
+  "signal_hiring_funding", "signal_new_website", "signal_contract_renewal",
+];
+async function loadSettings() {
+  try {
+    const r = await api("/api/settings");
+    SETTINGS = r.settings || {};
+    TONE_OPTIONS = r.tone_options || [];
+    renderSettings();
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+function renderSettings() {
+  TOGGLE_KEYS.forEach((k) => {
+    const el = $("#set-" + k);
+    if (!el) return;
+    el.classList.toggle("on", !!SETTINGS[k]);
+    el.setAttribute("aria-checked", String(!!SETTINGS[k]));
+  });
+  const cap = $("#set-daily_send_cap");
+  if (cap) cap.textContent = SETTINGS.daily_send_cap ?? 25;
+  const sel = $("#set-default_tone");
+  if (sel) {
+    sel.innerHTML = TONE_OPTIONS.map(
+      (o) => `<option value="${esc(o.value)}">${esc(o.label)}</option>`
+    ).join("");
+    sel.value = SETTINGS.default_tone || "warm_concise";
+  }
+}
+async function saveSetting(key, value, rowEl) {
+  try {
+    const r = await api("/api/settings", "PUT", { settings: { [key]: value } });
+    SETTINGS = r.settings || SETTINGS;
+    renderSettings();
+    if (rowEl) { rowEl.classList.remove("saved"); void rowEl.offsetWidth; rowEl.classList.add("saved"); }
+    toast("Saved");
+  } catch (e) {
+    toast(e.message, true);
+    loadSettings();
+  }
+}
+TOGGLE_KEYS.forEach((k) => {
+  const el = $("#set-" + k);
+  if (el) el.addEventListener("click", () => saveSetting(k, !SETTINGS[k], el.closest(".setting-row")));
+});
+if ($("#cap-minus"))
+  $("#cap-minus").addEventListener("click", () =>
+    saveSetting("daily_send_cap", Math.max(0, (SETTINGS.daily_send_cap || 25) - 5), $("#cap-minus").closest(".setting-row"))
+  );
+if ($("#cap-plus"))
+  $("#cap-plus").addEventListener("click", () =>
+    saveSetting("daily_send_cap", (SETTINGS.daily_send_cap || 25) + 5, $("#cap-plus").closest(".setting-row"))
+  );
+if ($("#set-default_tone"))
+  $("#set-default_tone").addEventListener("change", (e) =>
+    saveSetting("default_tone", e.target.value, e.target.closest(".setting-row"))
+  );
+
 $("#btn-save-icp").addEventListener("click", async () => {
   try {
     await api("/api/config/icp", "PUT", {
