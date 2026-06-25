@@ -60,13 +60,26 @@ def run_scheduler_tick(
     if components.brain is None:
         raise RuntimeError("A brain is required to advance conversations.")
 
+    # Read every configured channel's replies in one pass (LinkedIn + email).
     inbox = StubInbox()
-    if not dry_run and settings.unipile_api_key and settings.unipile_dsn:
-        from leia.inbox.unipile import UnipileInbox
+    if not dry_run:
+        boxes = []
+        if settings.unipile_api_key and settings.unipile_dsn:
+            from leia.inbox.unipile import UnipileInbox
 
-        inbox = UnipileInbox(
-            settings.unipile_api_key, settings.unipile_dsn, settings.unipile_account_id
-        )
+            boxes.append(
+                UnipileInbox(
+                    settings.unipile_api_key, settings.unipile_dsn, settings.unipile_account_id
+                )
+            )
+        if settings.instantly_api_key:
+            from leia.inbox.instantly import InstantlyInbox
+
+            boxes.append(InstantlyInbox(settings.instantly_api_key))
+        if boxes:
+            from leia.inbox.multi import MultiInbox
+
+            inbox = MultiInbox(boxes)
 
     paused = bool(rt["outreach_paused"])
     open_hours = force or within_business_hours()
