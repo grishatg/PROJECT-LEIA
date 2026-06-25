@@ -372,6 +372,12 @@ class ConversationThread(PKMixin, TenantMixin, TimestampMixin, Base):
     channel: Mapped[str] = mapped_column(String(20))
     status: Mapped[str] = mapped_column(String(30), default=ThreadStatus.ACTIVE)
     last_intent: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    # Provider-native conversation id (Unipile chat_id) — the durable key that ties an
+    # inbound LinkedIn reply back to this thread when no email/profile URL is available.
+    provider_chat_id: Mapped[str | None] = mapped_column(String(200), nullable=True, index=True)
+    # The invitation/relation id Unipile returns when we send a connection request, before
+    # a chat exists. Used to reconcile to a chat_id once the connection is accepted.
+    provider_thread_ref: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     messages: Mapped[list[Message]] = relationship(
         back_populates="thread", cascade="all, delete-orphan"

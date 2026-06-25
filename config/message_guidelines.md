@@ -82,6 +82,19 @@ at all, just let me know"*, *"see how we can move this forward"*, *"sure thing"*
 - **"Regards,"** — brief / transactional.
 - First name only — peer/internal, not cold outreach.
 
+## Signature (channel-specific — this matters)
+- **Email:** after the closing line, end with Greg's full signature block, exactly:
+  > Greg Tugulea
+  > Business Development Manager
+  >
+  > M 07393 009432
+  > E greg.tugulea@equityenergies.com
+  >
+  > www.equityenergies.com
+- **LinkedIn** (message or connection note): never paste the email signature. Sign with
+  **first name only** ("Greg"), or no sign-off at all on very short notes — it's a chat,
+  not a letter.
+
 ## Match the angle to the persona
 - **Finance / Procurement** → mis-billing and non-commodity/capacity charges: across a
   multi-site estate, sites are almost always on the wrong capacity charges or out of contract —

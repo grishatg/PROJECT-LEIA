@@ -17,7 +17,7 @@ proof_points:
   - "Knight Frank: ~£6m saved over ten years; £3m+ recovered since 2019; 1,100+ meters"
   - "Bighams: ~£10k recovered through kVA capacity-charge analysis; contracts right-sized"
   - "Capita: 8+ year relationship; rode out the energy crisis with minimal impact"
-  - "Parkwood Leisure: £171k recovered in 6 months (confirm public-facing before quoting)"
+  - "Parkwood Leisure: £171k recovered in 6 months (cleared for external use)"
   - "TELCA Large Consultancy of the Year 2024 & 2022; backed by DCC plc (FTSE 100)"
 
 # What makes Equity Energies different from the alternatives.
@@ -37,3 +37,14 @@ pain_points:
 
 # The call to action you want in outreach (what you're asking for).
 cta: "a quick 20-minute Teams call to see what's recoverable"
+
+# Greg's email sign-off. Appended verbatim to EMAIL drafts only (never to LinkedIn
+# connection notes, which stay short). Kept here so it survives redeploys and edits.
+signature: |
+  Greg Tugulea
+  Business Development Manager
+
+  M 07393 009432
+  E greg.tugulea@equityenergies.com
+
+  www.equityenergies.com

@@ -91,6 +91,8 @@ class ValuePropConfig(BaseModel):
     differentiators: list[str] = Field(default_factory=list)
     pain_points: list[str] = Field(default_factory=list)
     cta: str
+    # Email sign-off appended to email drafts (not LinkedIn connection notes).
+    signature: str | None = None
 
 
 # ── Non-secret app settings (settings.toml) ────────────────────────────────

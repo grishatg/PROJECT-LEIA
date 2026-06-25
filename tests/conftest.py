@@ -65,3 +65,29 @@ class FakeAnthropic:
 @pytest.fixture()
 def fake_anthropic() -> type[FakeAnthropic]:
     return FakeAnthropic
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_env(monkeypatch):
+    """Keep the suite offline + auth-disabled regardless of a local ``.env``.
+
+    ``Settings`` reads ``.env`` by default, so a developer's real secrets must never
+    leak into tests: the Supabase keys would flip auth ON (401s everywhere) and a live
+    Anthropic key would risk real spend. An empty env var overrides the ``.env`` file
+    entry in pydantic-settings, so we blank every secret and reset the cached Settings
+    before each test. Tests that need a secret (e.g. ``auth_secret``) set it themselves
+    *after* this autouse fixture has run.
+    """
+    from leia.config import get_settings
+
+    for var in (
+        "ANTHROPIC_API_KEY", "LUSHA_API_KEY", "PROSPEO_API_KEY", "APIFY_TOKEN",
+        "INSTANTLY_API_KEY", "INSTANTLY_CAMPAIGN_ID",
+        "UNIPILE_API_KEY", "UNIPILE_DSN", "UNIPILE_ACCOUNT_ID",
+        "COMPANIES_HOUSE_API_KEY", "DATABASE_URL", "BOOKING_URL",
+        "SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_JWT_SECRET",
+    ):
+        monkeypatch.setenv(var, "")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
