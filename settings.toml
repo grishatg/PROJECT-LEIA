@@ -1,0 +1,39 @@
+# settings.toml — non-secret application knobs (active config).
+# Copy of settings.example.toml with Companies House targeting filled in.
+# Secrets (API keys) live in .env, NOT here.
+
+[models]
+brain = "claude-opus-4-8"
+prefilter = "claude-haiku-4-5"
+
+[limits]
+daily_spend_cap_usd = 5.0
+max_prospects_per_run = 100
+daily_send_cap = 25
+
+[scoring]
+use_prefilter = false
+
+[lusha]
+max_prospects = 100
+signals_days_back = 90
+signal_types = ["promotion", "companyChange"]
+
+[companies_house]
+# Starter SIC set for EE's energy-intensive ICP (edit to taste). Covers food &
+# drink manufacturing, cold storage/warehousing, and heavy industrial — the
+# sectors Companies House identifies cleanly by SIC. Multi-site retail/hospitality
+# are better found via Lusha (estate size isn't a SIC attribute).
+#   10110 meat · 10130 meat products · 10511 dairy · 10710 bakery · 10890 other food
+#   52100 warehousing/cold storage · 23510 cement · 23110 flat glass
+#   24100 basic iron & steel · 17120 paper · 20160 plastics · 22220 plastic packaging
+sic_codes = ["10110", "10130", "10511", "10710", "10890", "52100", "23510", "23110", "24100", "17120", "20160", "22220"]
+location = ""           # blank = anywhere in the UK; e.g. "Manchester" to focus
+max_companies = 20
+officers_per_company = 2
+
+[jobspy]
+search_terms = ["energy manager", "head of procurement"]
+location = "United Kingdom"
+sites = ["indeed", "linkedin"]
+results = 20
