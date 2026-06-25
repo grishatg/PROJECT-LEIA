@@ -35,9 +35,10 @@ from leia.models import (
     MessageDirection,
     Prospect,
     ReplyIntent,
+    ScoredLead,
     ThreadStatus,
 )
-from leia.pipeline import _get_signal_summary, build_facts
+from leia.pipeline import _best_hook_text, _get_signal_summary, build_facts
 from leia.replies.parse import clean_reply
 from leia.suppression import add_suppression
 
@@ -61,6 +62,24 @@ def _match_prospect(session: Session, reply, account_id: str) -> Prospect | None
             )
         ).scalar_one_or_none()
     return None
+
+
+def _match_thread_by_chat_id(
+    session: Session, reply, account_id: str
+) -> ConversationThread | None:
+    """Match an inbound reply to a thread by its provider chat id.
+
+    This is the reliable path: once we've recorded a LinkedIn chat id on a thread, every
+    later message in that chat ties back instantly — no fragile email/profile-URL guessing.
+    """
+    if not reply.provider_chat_id:
+        return None
+    return session.execute(
+        select(ConversationThread).where(
+            ConversationThread.account_id == account_id,
+            ConversationThread.provider_chat_id == reply.provider_chat_id,
+        )
+    ).scalar_one_or_none()
 
 
 def _get_or_create_thread(
@@ -108,10 +127,16 @@ def advance_conversations(
         "suppressed": 0, "unmatched": 0, "skipped": 0,
     }
     for reply in inbox.fetch_new():
-        prospect = _match_prospect(session, reply, account_id)
-        if prospect is None:
-            counts["unmatched"] += 1
-            continue
+        # Prefer the reliable chat-id match (a known thread); fall back to email/URL.
+        thread = _match_thread_by_chat_id(session, reply, account_id)
+        if thread is not None:
+            prospect = session.get(Prospect, thread.prospect_id)
+        else:
+            prospect = _match_prospect(session, reply, account_id)
+            if prospect is None:
+                counts["unmatched"] += 1
+                continue
+            thread = _get_or_create_thread(session, prospect, reply.channel, account_id)
 
         # Idempotency: re-polling an inbox must not reprocess a message we've
         # already recorded. Skip anything whose provider_id is already on a Message.
@@ -124,7 +149,11 @@ def advance_conversations(
             counts["skipped"] += 1
             continue
 
-        thread = _get_or_create_thread(session, prospect, reply.channel, account_id)
+        # Learn the chat id from the first reply that carries one, so future messages in
+        # this conversation match instantly by chat id.
+        if reply.provider_chat_id and not thread.provider_chat_id:
+            thread.provider_chat_id = reply.provider_chat_id
+
         body = clean_reply(reply.body) if reply.channel == "email" else reply.body.strip()
         session.add(
             Message(
@@ -168,6 +197,7 @@ def advance_conversations(
                     to_email=ec.email if ec else None,
                     to_linkedin_url=prospect.linkedin_url,
                     body=reply_obj.body,
+                    provider_chat_id=thread.provider_chat_id,  # reply into the known chat
                 )
             )
             session.add(
@@ -208,6 +238,109 @@ def advance_conversations(
         else:
             thread.status = ThreadStatus.AWAITING_HUMAN
         counts["awaiting_human"] += 1
+
+    session.commit()
+    return counts
+
+
+def initiate_conversations(
+    session: Session,
+    *,
+    brain: Brain,
+    channel_for: Callable[[str], Channel],
+    value_prop: ValuePropConfig,
+    guidelines: str,
+    icp_id: str | None = None,
+    channel: str = "linkedin",
+    account_id: str = "local",
+    score_threshold: int = 60,
+    auto_send: bool = False,
+    send_cap: int | None = None,
+    limit: int | None = None,
+) -> dict:
+    """Start NEW conversations with freshly-scored leads.
+
+    For each scored lead above ``score_threshold`` that has no thread on ``channel`` yet,
+    draft an opener and either send it (``auto_send``, under ``send_cap``) or leave it
+    drafted for human approval. Either way we record a ``ConversationThread`` + the first
+    outbound ``Message`` so the prospect's reply matches straight back to this thread.
+
+    Safety: suppressed prospects and (for LinkedIn) those without a profile URL are skipped;
+    ``auto_send`` defaults to off (golden rule — nothing first-touch sends unless asked).
+    """
+    counts = {"initiated": 0, "sent": 0, "drafted": 0, "skipped": 0}
+    q = select(ScoredLead).where(
+        ScoredLead.account_id == account_id,
+        ScoredLead.score >= score_threshold,
+    )
+    if icp_id:
+        q = q.where(ScoredLead.icp_id == icp_id)
+    for lead in session.execute(q).scalars().all():
+        if limit is not None and counts["initiated"] >= limit:
+            break
+        prospect = session.get(Prospect, lead.prospect_id)
+        if prospect is None or prospect.suppressed:
+            continue
+        if channel == "linkedin" and not prospect.linkedin_url:
+            counts["skipped"] += 1
+            continue
+        # Never open a second thread on the same channel for the same prospect.
+        if session.execute(
+            select(ConversationThread.id).where(
+                ConversationThread.account_id == account_id,
+                ConversationThread.prospect_id == prospect.id,
+                ConversationThread.channel == channel,
+            )
+        ).first():
+            continue
+
+        facts = build_facts(
+            prospect,
+            _get_signal_summary(session, prospect),
+            research_hook=_best_hook_text(session, prospect.id, account_id),
+        )
+        out = brain.draft(facts, value_prop, guidelines, channel)
+        thread = ConversationThread(
+            account_id=account_id, prospect_id=prospect.id, channel=channel,
+            status=ThreadStatus.ACTIVE,
+        )
+        session.add(thread)
+        session.flush()
+
+        ec = prospect.enrichment
+        if auto_send and (send_cap is None or counts["sent"] < send_cap):
+            result = channel_for(channel).send(
+                OutboundMessage(
+                    channel=channel,
+                    to_email=ec.email if ec else None,
+                    to_linkedin_url=prospect.linkedin_url,
+                    body=out.result.body,
+                )
+            )
+            session.add(
+                Message(
+                    account_id=account_id, thread_id=thread.id,
+                    direction=MessageDirection.OUTBOUND, body=out.result.body,
+                    provider_id=result.provider_message_id,
+                )
+            )
+            raw = result.raw or {}
+            thread.provider_thread_ref = raw.get("relation_id") or result.provider_message_id
+            if raw.get("chat_id"):
+                thread.provider_chat_id = raw["chat_id"]
+            counts["sent"] += 1
+        else:
+            # Drafted opener, awaiting human — the safe default (golden rule).
+            session.add(
+                Message(
+                    account_id=account_id, thread_id=thread.id,
+                    direction=MessageDirection.OUTBOUND, body=out.result.body,
+                    provider_id=None,
+                )
+            )
+            thread.status = ThreadStatus.AWAITING_HUMAN
+            counts["drafted"] += 1
+        counts["initiated"] += 1
 
     session.commit()
     return counts

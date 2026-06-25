@@ -39,7 +39,14 @@ def test_validate_ok():
 def test_validate_missing_url():
     ch = _ch()
     msg = OutboundMessage(channel="linkedin", body="Hi!")
-    assert "missing to_linkedin_url" in ch.validate(msg)
+    assert "missing to_linkedin_url (or provider_chat_id)" in ch.validate(msg)
+
+
+def test_validate_accepts_chat_id_without_url():
+    # A continuation/reply targets an existing chat, so no profile URL is required.
+    ch = _ch()
+    msg = OutboundMessage(channel="linkedin", body="Thanks!", provider_chat_id="chat-123")
+    assert ch.validate(msg) == []
 
 
 def test_validate_empty_body():

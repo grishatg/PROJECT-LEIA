@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from leia.channels.base import SendResult
 from leia.config import ValuePropConfig
-from leia.conversation import advance_conversations
+from leia.conversation import advance_conversations, initiate_conversations
 from leia.inbox.base import InboundReply
 from leia.inbox.stub import StubInbox
 from leia.llm.stub import StubBrain
@@ -16,6 +16,7 @@ from leia.models import (
     Message,
     MessageDirection,
     Prospect,
+    ScoredLead,
     ThreadStatus,
 )
 from leia.suppression import is_suppressed
@@ -126,6 +127,176 @@ def test_idempotent_on_provider_id(session):
     assert second["inbound"] == 0
     inbound = [m for m in session.query(Message).all() if m.direction == MessageDirection.INBOUND]
     assert len(inbound) == 1  # recorded exactly once
+
+
+class _RecordingChannel:
+    name = "rec"
+    channel = "linkedin"
+
+    def __init__(self):
+        self.sent: list = []
+
+    def validate(self, message):
+        return []
+
+    def send(self, message):
+        self.sent.append(message)
+        return SendResult(ok=True, event="sent", provider="rec", provider_message_id="sent-x")
+
+
+def _seed_linkedin_prospect(session):
+    from leia.dedupe import canonicalize_linkedin_url
+
+    p = Prospect(
+        full_name="Maya Rao",
+        company_name="Northwind",
+        dedupe_key="maya-li",
+        linkedin_url=canonicalize_linkedin_url("https://www.linkedin.com/in/maya-rao"),
+    )
+    session.add(p)
+    session.commit()
+    return p
+
+
+def _advance_linkedin(
+    session, body, *, url=None, chat_id=None, provider_id=None, channel_for=_chan
+):
+    pid = provider_id or f"li-{abs(hash(body)) % 100000}"
+    inbox = StubInbox(
+        [
+            InboundReply(
+                provider_id=pid,
+                channel="linkedin",
+                body=body,
+                from_linkedin_url=url,
+                provider_chat_id=chat_id,
+            )
+        ]
+    )
+    return advance_conversations(
+        session, inbox=inbox, brain=StubBrain(), channel_for=channel_for,
+        value_prop=VP, guidelines="", booking_url="https://book.me/leia",
+    )
+
+
+def test_linkedin_reply_learns_chat_id(session):
+    """A reply matched by profile URL teaches the thread its chat id for next time."""
+    _seed_linkedin_prospect(session)
+    _advance_linkedin(
+        session, "Thanks, tell me more.",
+        url="https://www.linkedin.com/in/maya-rao", chat_id="chat-99",
+    )
+    assert session.query(ConversationThread).one().provider_chat_id == "chat-99"
+
+
+def test_linkedin_reply_matched_by_chat_id_without_url(session):
+    """Once the chat id is known, a later message carrying only that id still matches."""
+    _seed_linkedin_prospect(session)
+    _advance_linkedin(
+        session, "Hi there.",
+        url="https://www.linkedin.com/in/maya-rao", chat_id="chat-77",
+    )
+    counts = _advance_linkedin(session, "Following up.", chat_id="chat-77")
+    assert counts["inbound"] == 1
+    assert counts["unmatched"] == 0
+    assert session.query(ConversationThread).count() == 1
+
+
+def test_linkedin_continuation_sends_into_the_chat(session):
+    """Auto-sent continuations must target the known chat, not re-invite."""
+    _seed_linkedin_prospect(session)
+    rec = _RecordingChannel()
+    _advance_linkedin(
+        session, "Tell me more.",
+        url="https://www.linkedin.com/in/maya-rao", chat_id="chat-55",
+        channel_for=lambda _c: rec,
+    )
+    assert rec.sent and rec.sent[0].provider_chat_id == "chat-55"
+
+
+def _seed_scored_linkedin(
+    session, *, score=85, url="https://www.linkedin.com/in/maya-rao", key="maya-sc"
+):
+    from leia.config import load_icp
+    from leia.dedupe import canonicalize_linkedin_url
+    from leia.pipeline import ensure_icp_row
+
+    icp_row = ensure_icp_row(session, load_icp())
+    p = Prospect(
+        full_name="Maya Rao",
+        company_name="Northwind",
+        dedupe_key=key,
+        linkedin_url=canonicalize_linkedin_url(url) if url else None,
+    )
+    session.add(p)
+    session.flush()
+    session.add(ScoredLead(prospect_id=p.id, icp_id=icp_row.id, score=score, tier="A"))
+    session.commit()
+    return icp_row, p
+
+
+def test_initiate_drafts_opener_for_approval_by_default(session):
+    icp_row, _ = _seed_scored_linkedin(session)
+    rec = _RecordingChannel()
+    counts = initiate_conversations(
+        session, brain=StubBrain(), channel_for=lambda _c: rec,
+        value_prop=VP, guidelines="", icp_id=icp_row.id, score_threshold=60,
+    )
+    assert counts["initiated"] == 1 and counts["drafted"] == 1 and counts["sent"] == 0
+    assert not rec.sent  # nothing first-touch sends unless asked
+    thread = session.query(ConversationThread).one()
+    assert thread.status == ThreadStatus.AWAITING_HUMAN
+    out = [m for m in session.query(Message).all() if m.direction == MessageDirection.OUTBOUND]
+    assert out and out[0].provider_id is None  # drafted, not sent
+
+
+def test_initiate_auto_sends_when_enabled(session):
+    icp_row, _ = _seed_scored_linkedin(session)
+    rec = _RecordingChannel()
+    counts = initiate_conversations(
+        session, brain=StubBrain(), channel_for=lambda _c: rec,
+        value_prop=VP, guidelines="", icp_id=icp_row.id, auto_send=True,
+    )
+    assert counts["sent"] == 1
+    assert rec.sent and rec.sent[0].to_linkedin_url
+    thread = session.query(ConversationThread).one()
+    assert thread.status == ThreadStatus.ACTIVE
+    assert thread.provider_thread_ref == "sent-x"
+
+
+def test_initiate_skips_when_a_thread_already_exists(session):
+    icp_row, p = _seed_scored_linkedin(session)
+    session.add(
+        ConversationThread(prospect_id=p.id, channel="linkedin", status=ThreadStatus.ACTIVE)
+    )
+    session.commit()
+    counts = initiate_conversations(
+        session, brain=StubBrain(), channel_for=_chan,
+        value_prop=VP, guidelines="", icp_id=icp_row.id,
+    )
+    assert counts["initiated"] == 0
+
+
+def test_initiate_skips_linkedin_without_a_profile_url(session):
+    icp_row, _ = _seed_scored_linkedin(session, url=None)
+    counts = initiate_conversations(
+        session, brain=StubBrain(), channel_for=_chan,
+        value_prop=VP, guidelines="", icp_id=icp_row.id,
+    )
+    assert counts["skipped"] == 1 and counts["initiated"] == 0
+
+
+def test_initiate_respects_send_cap(session):
+    icp_row, _ = _seed_scored_linkedin(session, key="p1", url="https://www.linkedin.com/in/a")
+    _seed_scored_linkedin(session, key="p2", url="https://www.linkedin.com/in/b")
+    rec = _RecordingChannel()
+    counts = initiate_conversations(
+        session, brain=StubBrain(), channel_for=lambda _c: rec,
+        value_prop=VP, guidelines="", icp_id=icp_row.id, auto_send=True, send_cap=1,
+    )
+    assert counts["sent"] == 1  # cap honoured
+    assert counts["drafted"] == 1  # the second falls through to drafted
+    assert counts["initiated"] == 2
 
 
 def test_tick_endpoint_is_a_safe_noop():

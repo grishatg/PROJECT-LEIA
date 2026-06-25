@@ -41,8 +41,8 @@ class UnipileLinkedInChannel:
         problems: list[str] = []
         if message.channel != self.channel:
             problems.append(f"channel mismatch: {message.channel} != {self.channel}")
-        if not message.to_linkedin_url:
-            problems.append("missing to_linkedin_url")
+        if not message.provider_chat_id and not message.to_linkedin_url:
+            problems.append("missing to_linkedin_url (or provider_chat_id)")
         if not message.body or not message.body.strip():
             problems.append("empty body")
         return problems
@@ -58,6 +58,10 @@ class UnipileLinkedInChannel:
             )
         try:
             account_id = self._resolve_account_id()
+            # A continuation/reply goes INTO the existing chat; a cold opener sends an
+            # invitation-with-note (no chat exists until the recipient accepts).
+            if message.provider_chat_id:
+                return self._send_in_chat(message.provider_chat_id, message.body)
             attendee_id = self._resolve_attendee(message.to_linkedin_url, account_id)
             return self._send_invitation(account_id, attendee_id, message.body[:_MAX_NOTE])
         except Exception as e:  # noqa: BLE001 - never crash the pipeline on provider errors
@@ -124,10 +128,36 @@ class UnipileLinkedInChannel:
         )
         resp.raise_for_status()
         data = resp.json() if resp.content else {}
+        # The invitation id is the relation ref; there's no chat yet (created on accept).
+        # We stash it as ``relation_id`` so the thread can be reconciled to a chat later.
+        raw = {"relation_id": (data or {}).get("id")}
+        if isinstance(data, dict):
+            raw.update(data)
         return SendResult(
             ok=True,
             event=OutreachEvent.SENT,
             provider=self.name,
             provider_message_id=(data or {}).get("id"),
-            raw=data if isinstance(data, dict) else {},
+            raw=raw,
+        )
+
+    def _send_in_chat(self, chat_id: str, text: str) -> SendResult:
+        """Send a message into an existing LinkedIn chat (a reply/continuation)."""
+        resp = httpx.post(
+            f"{self.base_url}/api/v1/chats/{chat_id}/messages",
+            json={"text": text},
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        resp.raise_for_status()
+        data = resp.json() if resp.content else {}
+        raw = {"chat_id": chat_id}
+        if isinstance(data, dict):
+            raw.update(data)
+        return SendResult(
+            ok=True,
+            event=OutreachEvent.SENT,
+            provider=self.name,
+            provider_message_id=(data or {}).get("id"),
+            raw=raw,
         )

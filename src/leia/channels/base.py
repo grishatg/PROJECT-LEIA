@@ -18,6 +18,9 @@ class OutboundMessage(BaseModel):
     to_linkedin_url: str | None = None
     subject: str | None = None
     body: str
+    # When set, send into this existing provider conversation (a LinkedIn chat) instead of
+    # opening a new one — this is how replies/continuations go out, vs. a cold opener.
+    provider_chat_id: str | None = None
 
 
 class SendResult(BaseModel):
