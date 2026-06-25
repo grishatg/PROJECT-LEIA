@@ -55,6 +55,11 @@ defaults in the system prompt. British English throughout.
 - **Soft CTA + a concrete next step**, never a hard push — always an easy yes with a specific
   option: *"Happy to get on a quick call — I've got Tuesday or Thursday, what works your end?"*
 - **Em/en dashes** are on-brand used naturally and in moderation — don't ban them, don't overdo them.
+- **Don't run the same play every time.** These markers are a *seasoning*, not a template. Opening
+  every message with *"I'll keep this simple"* and leaning on *"Honestly,"* in all of them is the
+  fastest way to make a batch read as mail-merge. Per message use at most one of those two, vary the
+  first line, and let the structure change from prospect to prospect. If a hook is researched, open
+  on *that* — it does the personalising for you.
 
 ## Phrases he genuinely uses
 *"I'll keep this simple"*, *"Honestly,"*, *"worth 20 minutes"*, *"happy to…"*, *"no problem
@@ -81,6 +86,19 @@ at all, just let me know"*, *"see how we can move this forward"*, *"sure thing"*
 - **"All the best,"** — warm / rapport context.
 - **"Regards,"** — brief / transactional.
 - First name only — peer/internal, not cold outreach.
+
+## Signature (channel-specific — this matters)
+- **Email:** after the closing line, end with Greg's full signature block, exactly:
+  > Greg Tugulea
+  > Business Development Manager
+  >
+  > M 07393 009432
+  > E greg.tugulea@equityenergies.com
+  >
+  > www.equityenergies.com
+- **LinkedIn** (message or connection note): never paste the email signature. Sign with
+  **first name only** ("Greg"), or no sign-off at all on very short notes — it's a chat,
+  not a letter.
 
 ## Match the angle to the persona
 - **Finance / Procurement** → mis-billing and non-commodity/capacity charges: across a

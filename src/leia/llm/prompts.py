@@ -49,6 +49,23 @@ def render_score_system(score_system_md: str, icp: ICPConfig, vp: ValuePropConfi
     )
 
 
+def render_signature_block(vp: ValuePropConfig, channel: str) -> str:
+    """Sign-off guidance. Email signs in full; LinkedIn stays short (first name)."""
+    if channel == "email" and vp.signature:
+        return (
+            "\n\n## Email signature\n"
+            "End the email with this exact sign-off block (after your closing line):\n"
+            f"{vp.signature.strip()}"
+        )
+    if channel == "linkedin":
+        return (
+            "\n\n## Sign-off\n"
+            "LinkedIn — keep it short and conversational. Sign with first name only "
+            "('Greg'). Never paste the full email signature block."
+        )
+    return ""
+
+
 def render_draft_system(
     draft_system_md: str, vp: ValuePropConfig, guidelines: str, channel: str
 ) -> str:
@@ -57,6 +74,7 @@ def render_draft_system(
         f"## Channel\n{channel}\n\n"
         f"## Value proposition\n{render_value_prop_block(vp)}\n\n"
         f"## Message guidelines\n{guidelines.strip()}"
+        f"{render_signature_block(vp, channel)}"
     )
 
 
@@ -101,4 +119,16 @@ def render_facts(facts: ProspectFacts) -> str:
         ("Signal", facts.signal_summary),
     ]
     lines.extend(f"{label}: {value}" for label, value in optional if value)
+    if facts.research_hook:
+        lines.append("")
+        lines.append(
+            "Researched hook (open on this — TRUE and specific; use it faithfully, do not "
+            f"embellish or add numbers): {facts.research_hook}"
+        )
+    else:
+        lines.append("")
+        lines.append(
+            "Researched hook: none found — do NOT fake specificity; open on an honest, "
+            "concrete observation about their sector or role."
+        )
     return "\n".join(lines)

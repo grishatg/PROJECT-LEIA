@@ -285,6 +285,7 @@ def run(
         f"{reports['enrich']['enriched']} with email, {reports['enrich']['failed']} without",
     )
     table.add_row("score", f"{reports['score']['scored']} scored")
+    table.add_row("research", f"{reports.get('research', {}).get('researched', 0)} opener hooks")
     table.add_row("draft", f"{reports['draft']['drafted']} drafts")
     table.add_row("queue", f"{reports['enqueue']['queued']} awaiting your approval")
     table.add_row("Claude cost", f"${reports['total_cost_usd']:.4f}")
@@ -335,6 +336,37 @@ def rescore(
         f"Claude cost ${report.cost_usd:.4f}"
     )
     console.print("Review the updated scores in the dashboard: [bold]leia dashboard[/]")
+
+
+@app.command()
+def tick(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Stub providers: no spend, no sends."),
+    force: bool = typer.Option(False, "--force", help="Ignore the business-hours gate."),
+) -> None:
+    """One scheduler heartbeat: start new conversations + advance existing ones.
+
+    This is what the Render cron runs. All sends respect the kill switch, business hours,
+    the daily cap, and the 'always ask' gate — so by default it only drafts, never sends.
+    """
+    from leia.db import make_engine, make_session_factory, session_scope
+    from leia.tick import run_scheduler_tick
+
+    engine = make_engine()
+    factory = make_session_factory(engine)
+    with session_scope(factory) as session:
+        result = run_scheduler_tick(session, dry_run=dry_run, force=force)
+    init = result["initiated"]
+    counts = result["counts"]
+    console.print(
+        f"[green]tick[/] initiated {init['initiated']} "
+        f"(sent {init['sent']}, drafted {init['drafted']}) · "
+        f"replies: {counts['inbound']} in, {counts['auto_sent']} auto-sent, "
+        f"{counts['awaiting_human']} held"
+    )
+    if result["paused"]:
+        console.print("[yellow]outreach is PAUSED (kill switch on) — nothing sent[/]")
+    elif not result["business_hours"]:
+        console.print("[yellow]outside business hours — replies read, nothing sent[/]")
 
 
 @app.command()

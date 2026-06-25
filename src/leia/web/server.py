@@ -11,7 +11,6 @@ Launch with ``leia dashboard`` (binds to 127.0.0.1 — not exposed to the networ
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import yaml
@@ -24,6 +23,7 @@ from sqlalchemy.orm import Session
 from starlette.requests import Request
 
 from leia.approval.queue import approve, list_pending, reject
+from leia.channels.base import OutboundMessage
 from leia.config import (
     ICPConfig,
     get_settings,
@@ -35,13 +35,19 @@ from leia.db import make_engine, make_session_factory, session_scope
 from leia.models import (
     ApprovalItem,
     ApprovalState,
+    ConversationThread,
     DraftMessage,
     DraftStatus,
     EnrichedContact,
-    OutreachEvent,
+    Meeting,
+    MeetingStatus,
+    Message,
+    MessageDirection,
     OutreachLog,
     Prospect,
     ScoredLead,
+    ThreadStatus,
+    utcnow,
 )
 from leia.pipeline import build_components, rescore_all, run_until_queue, send_approved
 from leia.web.auth import auth_enabled, require_user
@@ -53,6 +59,7 @@ from leia.web.serializers import (
     serialize_outreach,
     serialize_prospect_row,
 )
+from leia.web.settings_store import get_runtime_settings, save_runtime_settings
 
 # Applied to every data route so nothing runs without a verified login (when
 # Supabase is configured). Public routes below intentionally omit it.
@@ -168,28 +175,13 @@ def status(session: Session = Depends(get_session)) -> dict:
 
 
 @app.get("/api/stats", dependencies=_AUTH)
-def stats(session: Session = Depends(get_session)) -> dict:
-    """Daily counts for the last 7 days: drafts created and messages sent."""
-    today = datetime.now(UTC).date()
-    days = [today - timedelta(days=i) for i in range(6, -1, -1)]
-    labels = [d.strftime("%a") for d in days]
-    drafted = {d: 0 for d in days}
-    sent = {d: 0 for d in days}
+def stats(period: str = "7d", session: Session = Depends(get_session)) -> dict:
+    """Analytics over a rolling window (period = 7d | 30d | 90d): outreach-over-time,
+    KPIs (reply rate, meetings booked, avg lead score) with sparklines + deltas, the
+    reply-rate trend, pipeline-by-stage, and the lead-score distribution."""
+    from leia.web.analytics import compute_analytics
 
-    for (created,) in session.execute(select(DraftMessage.created_at)):
-        if created and created.date() in drafted:
-            drafted[created.date()] += 1
-    for (occurred, event) in session.execute(
-        select(OutreachLog.occurred_at, OutreachLog.event)
-    ):
-        if occurred and event == OutreachEvent.SENT and occurred.date() in sent:
-            sent[occurred.date()] += 1
-
-    return {
-        "labels": labels,
-        "drafted": [drafted[d] for d in days],
-        "sent": [sent[d] for d in days],
-    }
+    return compute_analytics(session, period)
 
 
 # ── Approvals ─────────────────────────────────────────────────────────────────
@@ -230,6 +222,179 @@ def reject_one(
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=404, detail=str(e)) from e
     return {"id": item.id, "state": item.state}
+
+
+@app.post("/api/approvals/{approval_id}/retone", dependencies=_AUTH)
+def retone_one(
+    approval_id: str,
+    payload: dict = Body(default={}),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Re-draft a pending message in a different tone (the Outreach 'Adjust tone' chips).
+
+    Regenerates the body in place — the approval item stays pending — so the user can nudge
+    a draft warmer / shorter / more direct before approving it.
+    """
+    from leia.llm.tone import ADJUSTMENTS
+    from leia.pipeline import _best_hook_text, _get_signal_summary, build_facts
+
+    nudge = ADJUSTMENTS.get(payload.get("adjustment", ""))
+    if not nudge:
+        raise HTTPException(422, f"unknown adjustment (expected one of {list(ADJUSTMENTS)})")
+
+    item = session.get(ApprovalItem, approval_id)
+    if item is None:
+        raise HTTPException(404, "approval item not found")
+    draft = session.get(DraftMessage, item.draft_message_id)
+    lead = session.get(ScoredLead, draft.scored_lead_id)
+    prospect = session.get(Prospect, lead.prospect_id)
+
+    settings = get_settings()
+    app_settings = load_app_settings()
+    components = build_components(
+        dry_run=not settings.anthropic_api_key, settings=settings, app_settings=app_settings
+    )
+    facts = build_facts(
+        prospect,
+        _get_signal_summary(session, prospect),
+        research_hook=_best_hook_text(session, prospect.id, prospect.account_id),
+    )
+    guidelines = load_message_guidelines() + f"\n\n## Tone adjustment for this draft\n{nudge}"
+    out = components.brain.draft(facts, load_value_prop(), guidelines, draft.channel)
+    draft.subject = out.result.subject
+    draft.body = out.result.body
+    draft.status = DraftStatus.DRAFT  # stays pending — just re-toned
+    session.commit()
+    return {"id": item.id, "subject": draft.subject, "body": draft.body}
+
+
+# ── Conversations (AWAITING_HUMAN review surface) ───────────────────────────
+
+
+_CONV_FILTERS = {
+    "awaiting_human": [ThreadStatus.AWAITING_HUMAN, ThreadStatus.MEETING_LINK_SHARED],
+    "active": [ThreadStatus.ACTIVE],
+    "booked": [ThreadStatus.BOOKED],
+}
+
+
+def _latest(msgs, direction, *, drafted=None):
+    for m in reversed(msgs):
+        if m.direction != direction:
+            continue
+        if drafted is True and m.provider_id is not None:
+            continue
+        if drafted is False and m.provider_id is None:
+            continue
+        return m
+    return None
+
+
+@app.get("/api/conversations", dependencies=_AUTH)
+def conversations(
+    status: str = "awaiting_human", session: Session = Depends(get_session)
+) -> list[dict]:
+    """Threads needing a human: gated replies (meeting proposals, questions) and drafted
+    openers. The Outreach tab's conversation surface reads this."""
+    want = _CONV_FILTERS.get(status)
+    q = select(ConversationThread)
+    if want is not None:
+        q = q.where(ConversationThread.status.in_(want))
+    q = q.order_by(ConversationThread.updated_at.desc())
+    rows: list[dict] = []
+    for t in session.execute(q).scalars().all():
+        prospect = session.get(Prospect, t.prospect_id)
+        msgs = session.execute(
+            select(Message).where(Message.thread_id == t.id).order_by(Message.occurred_at)
+        ).scalars().all()
+        their = _latest(msgs, MessageDirection.INBOUND)
+        draft = _latest(msgs, MessageDirection.OUTBOUND, drafted=True)
+        rows.append(
+            {
+                "thread_id": t.id,
+                "name": prospect.full_name if prospect else "—",
+                "company": prospect.company_name if prospect else None,
+                "channel": t.channel,
+                "status": t.status,
+                "last_intent": t.last_intent,
+                "their_message": their.body if their else None,
+                "draft_reply": draft.body if draft else None,
+                "is_opener": their is None,
+            }
+        )
+    return rows
+
+
+@app.post("/api/conversations/{thread_id}/send", dependencies=_AUTH)
+def send_conversation(
+    thread_id: str,
+    payload: dict = Body(default={}),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Approve + send the pending drafted message in a thread (a gated reply or opener)."""
+    t = session.get(ConversationThread, thread_id)
+    if t is None:
+        raise HTTPException(404, "conversation not found")
+    msgs = session.execute(
+        select(Message).where(Message.thread_id == t.id).order_by(Message.occurred_at)
+    ).scalars().all()
+    pending = _latest(msgs, MessageDirection.OUTBOUND, drafted=True)
+    if pending is None:
+        raise HTTPException(400, "no drafted message to send")
+    if payload.get("edited_body"):
+        pending.body = payload["edited_body"]
+
+    prospect = session.get(Prospect, t.prospect_id)
+    ec = prospect.enrichment if prospect else None
+    settings = get_settings()
+    components = build_components(
+        dry_run=False, settings=settings, app_settings=load_app_settings(), require_brain=False
+    )
+    result = components.channel_for(t.channel).send(
+        OutboundMessage(
+            channel=t.channel,
+            to_email=ec.email if ec else None,
+            to_linkedin_url=prospect.linkedin_url if prospect else None,
+            body=pending.body,
+            provider_chat_id=t.provider_chat_id,
+        )
+    )
+    if result.ok:
+        pending.provider_id = result.provider_message_id or "sent"
+        if (result.raw or {}).get("chat_id") and not t.provider_chat_id:
+            t.provider_chat_id = result.raw["chat_id"]
+        t.status = ThreadStatus.BOOKED if t.status == ThreadStatus.BOOKED else ThreadStatus.ACTIVE
+    session.commit()
+    return {"ok": result.ok, "detail": result.detail, "status": t.status}
+
+
+@app.post("/api/conversations/{thread_id}/mark-booked", dependencies=_AUTH)
+def mark_conversation_booked(
+    thread_id: str, session: Session = Depends(get_session)
+) -> dict:
+    """Mark a thread as a booked meeting (the 'Mark booked' action)."""
+    t = session.get(ConversationThread, thread_id)
+    if t is None:
+        raise HTTPException(404, "conversation not found")
+    t.status = ThreadStatus.BOOKED
+    meeting = session.execute(
+        select(Meeting).where(Meeting.thread_id == t.id)
+    ).scalars().first()
+    if meeting:
+        meeting.status = MeetingStatus.BOOKED
+        meeting.booked_at = utcnow()
+    else:
+        session.add(
+            Meeting(
+                account_id=t.account_id,
+                prospect_id=t.prospect_id,
+                thread_id=t.id,
+                status=MeetingStatus.BOOKED,
+                booked_at=utcnow(),
+            )
+        )
+    session.commit()
+    return {"thread_id": t.id, "status": t.status}
 
 
 # ── Run / Send ────────────────────────────────────────────────────────────────
@@ -458,49 +623,21 @@ def tasks_tick(
     payload: dict = Body(default={}),
     session: Session = Depends(get_session),
 ) -> dict:
-    """Advance conversations: pull the inbox, reply (auto-send `continue`, gate
-    meetings, suppress opt-outs). Driven by a scheduler (e.g. a Render cron job).
-
-    Uses the live Unipile LinkedIn inbox when its credentials are configured (and
-    not a dry-run); otherwise an empty stub inbox makes the tick a safe no-op. The
-    hybrid autonomy + suppression logic is fully exercised by the offline suite.
+    """The scheduler heartbeat (driven by a Render cron). Initiates new conversations and
+    advances existing ones, all behind the kill switch / business-hours / daily-cap /
+    always-ask gates. ``force`` ignores the business-hours gate (manual "run now"). The
+    logic lives in ``leia.tick`` so the cron can run it in-container without HTTP.
     """
-    from leia.conversation import advance_conversations
-    from leia.inbox.stub import StubInbox
+    from leia.tick import run_scheduler_tick
 
-    settings = get_settings()
-    app_settings = load_app_settings()
-    dry_run = bool(payload.get("dry_run", False))
     try:
-        components = build_components(
-            dry_run=dry_run,
-            settings=settings,
-            app_settings=app_settings,
+        return run_scheduler_tick(
+            session,
+            dry_run=bool(payload.get("dry_run", False)),
+            force=bool(payload.get("force", False)),
         )
     except RuntimeError as e:
         raise HTTPException(400, str(e)) from e
-    if components.brain is None:
-        raise HTTPException(400, "A brain is required to advance conversations.")
-
-    inbox = StubInbox()
-    if not dry_run and settings.unipile_api_key and settings.unipile_dsn:
-        from leia.inbox.unipile import UnipileInbox
-
-        inbox = UnipileInbox(
-            settings.unipile_api_key, settings.unipile_dsn, settings.unipile_account_id
-        )
-
-    counts = advance_conversations(
-        session,
-        inbox=inbox,
-        brain=components.brain,
-        channel_for=components.channel_for,
-        value_prop=load_value_prop(),
-        guidelines=load_message_guidelines(),
-        booking_url=settings.booking_url,
-        reply_cap=app_settings.limits.daily_send_cap,
-    )
-    return {"counts": counts, "notes": components.notes}
 
 
 @app.get("/api/export/prospects.csv", dependencies=_AUTH)
@@ -572,3 +709,23 @@ def put_icp(
     except OSError:
         pass
     return cfg.model_dump()
+
+
+@app.get("/api/settings", dependencies=_AUTH)
+def get_settings_endpoint(session: Session = Depends(get_session)) -> dict:
+    """Runtime settings for the Settings page (+ the tone dropdown's options)."""
+    from leia.llm.tone import tone_options
+
+    return {"settings": get_runtime_settings(session), "tone_options": tone_options()}
+
+
+@app.put("/api/settings", dependencies=_AUTH)
+def put_settings_endpoint(
+    payload: dict = Body(...),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Persist a partial settings update (DB-backed; survives redeploys)."""
+    updates = payload.get("settings", payload)
+    if not isinstance(updates, dict):
+        raise HTTPException(422, "settings must be an object")
+    return {"settings": save_runtime_settings(session, updates)}

@@ -14,6 +14,14 @@ daily_send_cap = 25
 [scoring]
 use_prefilter = false
 
+[research]
+# Opener hooks. Signal-derived hooks are always on and free. Web search adds a hook for
+# signal-less leads but is a PAID Anthropic call per lead — off by default so it can't
+# surprise the daily spend cap. Turn it on here (or in Settings) when you want max quality.
+web_enabled = false
+web_model = "claude-haiku-4-5"
+web_max_uses = 3
+
 [lusha]
 max_prospects = 100
 signals_days_back = 90

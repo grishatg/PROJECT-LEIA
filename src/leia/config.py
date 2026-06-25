@@ -91,6 +91,8 @@ class ValuePropConfig(BaseModel):
     differentiators: list[str] = Field(default_factory=list)
     pain_points: list[str] = Field(default_factory=list)
     cta: str
+    # Email sign-off appended to email drafts (not LinkedIn connection notes).
+    signature: str | None = None
 
 
 # ── Non-secret app settings (settings.toml) ────────────────────────────────
@@ -109,6 +111,14 @@ class LimitSettings(BaseModel):
 
 class ScoringSettings(BaseModel):
     use_prefilter: bool = False
+
+
+class ResearchSettings(BaseModel):
+    # Web-search hooks are a PAID path (one Anthropic web-search call per signal-less lead).
+    # Off by default so it can't surprise a daily spend cap; flip on in Settings to enable.
+    web_enabled: bool = False
+    web_model: str = "claude-haiku-4-5"
+    web_max_uses: int = 3
 
 
 class PathSettings(BaseModel):
@@ -141,6 +151,7 @@ class AppSettings(BaseModel):
     models: ModelSettings = Field(default_factory=ModelSettings)
     limits: LimitSettings = Field(default_factory=LimitSettings)
     scoring: ScoringSettings = Field(default_factory=ScoringSettings)
+    research: ResearchSettings = Field(default_factory=ResearchSettings)
     paths: PathSettings = Field(default_factory=PathSettings)
     lusha: LushaSettings = Field(default_factory=LushaSettings)
     companies_house: CompaniesHouseSettings = Field(default_factory=CompaniesHouseSettings)

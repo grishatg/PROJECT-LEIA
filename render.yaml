@@ -35,3 +35,40 @@ services:
         sync: false
       - key: UNIPILE_DSN
         sync: false
+      - key: UNIPILE_ACCOUNT_ID
+        sync: false
+      # ── UK discovery + booking ──
+      - key: COMPANIES_HOUSE_API_KEY
+        sync: false
+      - key: BOOKING_URL
+        sync: false
+
+  # ── Scheduler: heartbeat that initiates + advances conversations ──
+  # Runs `leia tick` in-container (same env/DB as the web service), so no HTTP/auth
+  # dance. Every gate (kill switch, business hours, daily cap, "always ask") is enforced
+  # inside the tick — by default it only DRAFTS, it does not send. Fires every 15 min;
+  # the business-hours window inside the tick keeps it to UK working hours.
+  - type: cron
+    name: leia-tick
+    runtime: docker
+    schedule: "*/15 * * * *"
+    dockerCommand: uv run leia tick
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: LUSHA_API_KEY
+        sync: false
+      - key: INSTANTLY_API_KEY
+        sync: false
+      - key: INSTANTLY_CAMPAIGN_ID
+        sync: false
+      - key: UNIPILE_API_KEY
+        sync: false
+      - key: UNIPILE_DSN
+        sync: false
+      - key: UNIPILE_ACCOUNT_ID
+        sync: false
+      - key: BOOKING_URL
+        sync: false
