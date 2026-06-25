@@ -63,6 +63,39 @@ def test_rerun_is_idempotent(session):
     assert second["draft"]["drafted"] == 0
 
 
+def test_rescore_updates_existing_verdicts_in_place(session):
+    """rescore_all re-runs scoring over enriched prospects and updates each
+    ScoredLead in place (no duplicate rows), reflecting the current ICP."""
+    from leia.config import load_value_prop
+    from leia.llm.base import ScoreOutput
+    from leia.models import ScoredLead
+    from leia.pipeline import rescore_all
+    from leia.schemas import ScoreResult
+
+    _run(session)
+    before = session.query(ScoredLead).all()
+    assert before, "expected the dry-run to have scored prospects"
+    n_rows = len(before)
+
+    class FixedBrain:
+        """A brain that scores every prospect 73/tier B with a fresh rationale."""
+
+        def score(self, facts, icp, value_prop):
+            return ScoreOutput(
+                result=ScoreResult(
+                    score=73, tier="B", rationale="rescored", matched_criteria=["industry: test"]
+                ),
+                model_id="stub",
+            )
+
+    report = rescore_all(session, FixedBrain(), load_icp(), load_value_prop())
+    assert report.counts["scored"] == n_rows
+
+    after = session.query(ScoredLead).all()
+    assert len(after) == n_rows  # updated in place, not duplicated
+    assert all(s.score == 73 and s.tier == "B" and s.rationale == "rescored" for s in after)
+
+
 def test_approve_then_send_only_touches_approved(session):
     _run(session)
     pending = list_pending(session)

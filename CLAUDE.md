@@ -66,6 +66,7 @@ uv sync                 # install deps
 uv run leia init-db     # create the SQLite schema
 uv run leia config-check# validate config files (icp.yaml / value_prop.yaml)
 uv run leia run --dry-run --input data/fixtures/contacts.sample.csv  # full pipeline, stubbed
+uv run leia rescore     # re-score existing prospects against the current ICP (in place)
 uv run leia dashboard   # web control center at http://localhost:8000 (local only)
 uv run leia send --dry-run  # send APPROVED drafts (stubbed in dry-run)
 uv run pytest           # run the offline test suite

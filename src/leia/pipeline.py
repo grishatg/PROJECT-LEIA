@@ -330,7 +330,16 @@ def score(
     icp_row: ICP,
     account_id: str = "local",
     limit: int | None = None,
+    rescore: bool = False,
 ) -> StageReport:
+    """Score enriched prospects against the active ICP.
+
+    By default this is idempotent: a prospect already scored against this ICP
+    version is skipped. Pass ``rescore=True`` to re-run Claude on every enriched
+    prospect and **update its existing verdict in place** (score, tier, rationale,
+    matched criteria, token/cost metering). Re-scoring leaves drafts and approvals
+    untouched — the human-approval gate is never bypassed.
+    """
     q = select(Prospect).where(
         Prospect.account_id == account_id,
         Prospect.enrichment_status == EnrichmentStatus.ENRICHED,
@@ -339,31 +348,45 @@ def score(
     scored = 0
     cost = 0.0
     for p in session.execute(q).scalars().all():
-        if session.execute(
+        existing = session.execute(
             select(ScoredLead).where(
                 ScoredLead.prospect_id == p.id, ScoredLead.icp_id == icp_row.id
             )
-        ).scalar_one_or_none():
+        ).scalar_one_or_none()
+        if existing is not None and not rescore:
             continue
         out = brain.score(build_facts(p, _get_signal_summary(session, p)), icp_config, value_prop)
-        session.add(
-            ScoredLead(
-                account_id=account_id,
-                prospect_id=p.id,
-                icp_id=icp_row.id,
-                score=out.result.score,
-                tier=out.result.tier,
-                rationale=out.result.rationale,
-                matched_criteria_json=out.result.matched_criteria,
-                model_id=out.model_id,
-                tokens_in=out.tokens_in,
-                tokens_out=out.tokens_out,
-                cache_read_tokens=out.cache_read_tokens,
-                cache_write_tokens=out.cache_write_tokens,
-                cost_usd=out.cost_usd,
-                scored_at=utcnow(),
+        if existing is not None:
+            existing.score = out.result.score
+            existing.tier = out.result.tier
+            existing.rationale = out.result.rationale
+            existing.matched_criteria_json = out.result.matched_criteria
+            existing.model_id = out.model_id
+            existing.tokens_in = out.tokens_in
+            existing.tokens_out = out.tokens_out
+            existing.cache_read_tokens = out.cache_read_tokens
+            existing.cache_write_tokens = out.cache_write_tokens
+            existing.cost_usd = out.cost_usd
+            existing.scored_at = utcnow()
+        else:
+            session.add(
+                ScoredLead(
+                    account_id=account_id,
+                    prospect_id=p.id,
+                    icp_id=icp_row.id,
+                    score=out.result.score,
+                    tier=out.result.tier,
+                    rationale=out.result.rationale,
+                    matched_criteria_json=out.result.matched_criteria,
+                    model_id=out.model_id,
+                    tokens_in=out.tokens_in,
+                    tokens_out=out.tokens_out,
+                    cache_read_tokens=out.cache_read_tokens,
+                    cache_write_tokens=out.cache_write_tokens,
+                    cost_usd=out.cost_usd,
+                    scored_at=utcnow(),
+                )
             )
-        )
         scored += 1
         cost += out.cost_usd
         if limit and scored >= limit:
@@ -371,6 +394,30 @@ def score(
 
     session.commit()
     return StageReport(counts={"scored": scored}, cost_usd=cost)
+
+
+def rescore_all(
+    session: Session,
+    brain: Brain,
+    icp_config: ICPConfig,
+    value_prop: ValuePropConfig,
+    account_id: str = "local",
+    limit: int | None = None,
+) -> StageReport:
+    """Re-run Claude scoring over every already-enriched prospect against the
+    current ICP, updating each verdict in place. Use after editing the ICP or the
+    scoring prompt so existing prospects reflect the new criteria."""
+    icp_row = ensure_icp_row(session, icp_config, account_id)
+    return score(
+        session,
+        brain,
+        icp_config,
+        value_prop,
+        icp_row,
+        account_id=account_id,
+        limit=limit,
+        rescore=True,
+    )
 
 
 def draft(

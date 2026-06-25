@@ -126,6 +126,10 @@ h1.screen { margin:0 0 5px; font:500 27px/1.1 'Schibsted Grotesk'; letter-spacin
 .btn.inline:hover { background:var(--amber-tint); }
 .btn.text { background:transparent; border:none; color:var(--text-4); padding:13px 6px; font-weight:500; }
 .btn.text:hover { color:var(--text-2); }
+.btn.ghost { background:var(--surface); color:var(--text-2); border-color:var(--border-hover); }
+.btn.ghost:hover { background:var(--border-inner); }
+.btn[disabled] { opacity:.55; cursor:default; }
+.head-actions { display:flex; align-items:center; gap:10px; }
 .btn:disabled { opacity:.55; cursor:default; }
 .btn.full { width:100%; justify-content:center; }
 

@@ -288,6 +288,34 @@ $("#prospect-search").addEventListener("input", (e) => {
   renderProspects();
 });
 
+// Re-score every enriched prospect against the current ICP, in place.
+$("#btn-rescore").addEventListener("click", async () => {
+  const btn = $("#btn-rescore"), orig = btn.innerHTML;
+  let dryRun = false;
+  try {
+    const st = await api("/api/status");
+    dryRun = !(st.keys && st.keys.anthropic);
+  } catch (e) { /* fall back to a real run; the API will report if a key is missing */ }
+  const n = PROSPECTS.filter((p) => p.score !== null && p.score !== undefined).length;
+  const msg = dryRun
+    ? "No Anthropic key set — re-score with the free heuristic (stub) brain?"
+    : `Re-score ${n || "all"} prospect(s) against the current ICP with Claude? This costs one scoring call each.`;
+  if (!confirm(msg)) return;
+  btn.disabled = true;
+  btn.textContent = "Re-scoring…";
+  try {
+    const r = await api("/api/rescore", "POST", { dry_run: dryRun });
+    const scored = (r.counts && r.counts.scored) || 0;
+    await loadProspects();
+    toast(`Re-scored ${scored} prospect(s)` + (r.dry_run ? " (heuristic)" : ` · $${(r.cost_usd || 0).toFixed(4)}`));
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = orig;
+  }
+});
+
 // ── Lead detail (slide-over) ──────────────────────────────────────────────────
 function closeDrawer() {
   $("#drawer").classList.remove("open");
