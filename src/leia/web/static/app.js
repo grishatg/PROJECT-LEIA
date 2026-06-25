@@ -229,26 +229,47 @@ $("#today-layout").addEventListener("click", () => {
 
 // ── Prospects ───────────────────────────────────────────────────────────────
 let PROSPECTS = [];
-let FILTER = "all";
+let SCORE_FILTER = "all", STATUS_FILTER = "all", INDUSTRY_FILTER = "all";
 let SEARCH = "";
 async function loadProspects() {
   try {
     PROSPECTS = await api("/api/prospects");
+    populateIndustries();
     renderProspects();
   } catch (e) {
     toast(e.message, true);
   }
 }
+function populateIndustries() {
+  const sel = $("#filter-industry");
+  if (!sel) return;
+  const inds = Array.from(new Set(PROSPECTS.map((p) => p.industry).filter(Boolean))).sort();
+  const cur = sel.value;
+  sel.innerHTML =
+    `<option value="all">Any industry</option>` +
+    inds.map((i) => `<option value="${esc(i)}">${esc(i)}</option>`).join("");
+  sel.value = inds.includes(cur) ? cur : "all";
+}
 function renderProspects() {
   const q = SEARCH.trim().toLowerCase();
+  const filtered = SCORE_FILTER !== "all" || STATUS_FILTER !== "all" || INDUSTRY_FILTER !== "all" || q;
   const rows = PROSPECTS.filter((p) => {
-    if (FILTER !== "all" && tierInfo(p.score).band !== FILTER) return false;
+    if (SCORE_FILTER !== "all" && tierInfo(p.score).band !== SCORE_FILTER) return false;
+    if (STATUS_FILTER !== "all" && (p.status || "New") !== STATUS_FILTER) return false;
+    if (INDUSTRY_FILTER !== "all" && p.industry !== INDUSTRY_FILTER) return false;
     if (!q) return true;
     return [p.full_name, p.company_name].some((v) => String(v || "").toLowerCase().includes(q));
   });
+  const count = $("#prospect-count");
+  if (count) {
+    const nw = PROSPECTS.filter((p) => (p.status || "New") === "New").length;
+    count.textContent = PROSPECTS.length
+      ? `${rows.length} of ${PROSPECTS.length} lead${PROSPECTS.length === 1 ? "" : "s"} · ${nw} new`
+      : "";
+  }
   const grid = $("#prospect-grid");
   if (!rows.length) {
-    grid.innerHTML = q || FILTER !== "all"
+    grid.innerHTML = filtered
       ? `<div class="card"><span class="muted">No matching prospects.</span></div>`
       : `<div class="card"><span class="muted">No prospects yet. Click “Find more leads” to get started.</span></div>`;
     return;
@@ -284,13 +305,9 @@ $$("#analytics-range .seg-opt").forEach((b) =>
   })
 );
 
-$$("#prospect-filters .chip-filter").forEach((b) =>
-  b.addEventListener("click", () => {
-    FILTER = b.dataset.tier;
-    $$("#prospect-filters .chip-filter").forEach((x) => x.classList.toggle("active", x === b));
-    renderProspects();
-  })
-);
+$("#filter-score").addEventListener("change", (e) => { SCORE_FILTER = e.target.value; renderProspects(); });
+$("#filter-status").addEventListener("change", (e) => { STATUS_FILTER = e.target.value; renderProspects(); });
+$("#filter-industry").addEventListener("change", (e) => { INDUSTRY_FILTER = e.target.value; renderProspects(); });
 $("#prospect-search").addEventListener("input", (e) => {
   SEARCH = e.target.value;
   renderProspects();

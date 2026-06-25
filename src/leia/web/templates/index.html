@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,16..72,400;1,16..72,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=ds-3" />
+  <link rel="stylesheet" href="/static/style.css?v=ds-4" />
 </head>
 <body>
   <div class="app">
@@ -100,11 +100,22 @@
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="7" cy="7" r="4.5"/><path d="M11 11l3 3" stroke-linecap="round"/></svg>
             <input type="text" id="prospect-search" placeholder="Search by name or company" autocomplete="off" />
           </label>
-          <button class="chip-filter active" data-tier="all">All</button>
-          <button class="chip-filter" data-tier="A">Excellent &amp; strong</button>
-          <button class="chip-filter" data-tier="B">Worth a look</button>
-          <button class="chip-filter" data-tier="C">Low</button>
+          <select class="select" id="filter-score">
+            <option value="all">Any score</option>
+            <option value="A">Excellent &amp; strong (70+)</option>
+            <option value="B">Worth a look (55–69)</option>
+            <option value="C">Low (&lt;55)</option>
+          </select>
+          <select class="select" id="filter-status">
+            <option value="all">Any status</option>
+            <option value="New">New</option>
+            <option value="Contacted">Contacted</option>
+          </select>
+          <select class="select" id="filter-industry">
+            <option value="all">Any industry</option>
+          </select>
         </div>
+        <div class="prospect-count" id="prospect-count"></div>
         <div class="grid" id="prospect-grid"></div>
       </section>
 
@@ -368,6 +379,6 @@
 
   <div class="toast" id="toast"></div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/static/app.js?v=ds-3"></script>
+  <script src="/static/app.js?v=ds-4"></script>
 </body>
 </html>

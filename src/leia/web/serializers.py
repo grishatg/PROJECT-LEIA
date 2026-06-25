@@ -91,6 +91,7 @@ def serialize_prospect_row(session: Session, prospect: Prospect) -> dict:
         "score": lead.score if lead else None,
         "tier": lead.tier if lead else None,
         "status": status,
+        "industry": ec.industry if ec else None,
         "signals": _signals(session, prospect),
     }
 
