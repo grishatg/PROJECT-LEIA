@@ -293,6 +293,51 @@ def run(
 
 
 @app.command()
+def rescore(
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Stub brain: zero spend (heuristic scores)."
+    ),
+    limit: int = typer.Option(None, help="Max prospects to re-score this run."),
+) -> None:
+    """Re-score every enriched prospect against the current ICP, updating each
+    verdict in place. Run this after editing config/icp.yaml or the scoring prompt
+    so existing prospects reflect the new criteria. Drafts/approvals are untouched."""
+    from leia.db import make_engine, make_session_factory, session_scope
+    from leia.pipeline import build_components, rescore_all
+
+    icp = load_icp()
+    vp = load_value_prop()
+    settings = get_settings()
+    app_settings = load_app_settings()
+
+    try:
+        components = build_components(
+            dry_run=dry_run, settings=settings, app_settings=app_settings
+        )
+    except RuntimeError as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(code=1) from e
+    for note in components.notes:
+        console.print(f"[yellow]note:[/] {note}")
+    if components.brain is None:
+        console.print("[red]A brain is required to score prospects.[/]")
+        raise typer.Exit(code=1)
+
+    engine = make_engine()
+    factory = make_session_factory(engine)
+    with session_scope(factory) as session:
+        report = rescore_all(session, components.brain, icp, vp, limit=limit)
+
+    scored = report.counts.get("scored", 0)
+    console.print(
+        f"[green]re-scored[/] {scored} prospect(s) against "
+        f"[bold]{icp.name}[/] (threshold {icp.score_threshold})   "
+        f"Claude cost ${report.cost_usd:.4f}"
+    )
+    console.print("Review the updated scores in the dashboard: [bold]leia dashboard[/]")
+
+
+@app.command()
 def send(
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Stub channel: nothing actually leaves."

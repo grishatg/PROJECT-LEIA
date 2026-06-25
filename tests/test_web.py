@@ -137,6 +137,21 @@ def test_prospects_list_after_run(client):
     assert scored == sorted(scored, key=lambda r: r["score"], reverse=True)  # best first
 
 
+def test_rescore_updates_scores_in_place(client):
+    _run_dry(client)
+    before = client.get("/api/prospects").json()
+    n_scored = len([r for r in before if r["score"] is not None])
+
+    r = client.post("/api/rescore", json={"dry_run": True})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["dry_run"] is True
+    assert body["counts"]["scored"] == n_scored
+
+    after = client.get("/api/prospects").json()
+    assert len(after) == len(before)  # no new prospects, just re-scored
+
+
 def test_prospect_detail(client):
     _run_dry(client)
     pid = client.get("/api/prospects").json()[0]["id"]

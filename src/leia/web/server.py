@@ -43,7 +43,7 @@ from leia.models import (
     Prospect,
     ScoredLead,
 )
-from leia.pipeline import build_components, run_until_queue, send_approved
+from leia.pipeline import build_components, rescore_all, run_until_queue, send_approved
 from leia.web.auth import auth_enabled, require_user
 from leia.web.config_store import get_effective_icp, save_icp
 from leia.web.serializers import (
@@ -397,6 +397,43 @@ def run_pipeline(
     )
     reports["notes"] = components.notes
     return reports
+
+
+@app.post("/api/rescore", dependencies=_AUTH)
+def rescore(
+    payload: dict = Body(default={}),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Re-score every already-enriched prospect against the current ICP, updating
+    each verdict in place. Run this after editing the ICP so existing prospects
+    reflect the new criteria. Costs one Claude scoring call per prospect (unless
+    dry_run, which uses the free stub brain). Drafts/approvals are left untouched.
+    """
+    dry_run = bool(payload.get("dry_run", False))
+    limit = payload.get("limit")
+    settings = get_settings()
+    app_settings = load_app_settings()
+    icp = get_effective_icp(session)
+    vp = load_value_prop()
+    try:
+        components = build_components(dry_run=dry_run, settings=settings, app_settings=app_settings)
+    except RuntimeError as e:
+        raise HTTPException(400, str(e)) from e
+    if components.brain is None:
+        raise HTTPException(400, "A brain is required to score prospects.")
+    report = rescore_all(
+        session,
+        components.brain,
+        icp,
+        vp,
+        limit=int(limit) if limit else None,
+    )
+    return {
+        "counts": report.counts,
+        "cost_usd": round(report.cost_usd, 6),
+        "notes": components.notes,
+        "dry_run": dry_run,
+    }
 
 
 @app.post("/api/send", dependencies=_AUTH)
