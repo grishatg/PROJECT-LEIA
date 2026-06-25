@@ -289,31 +289,49 @@ $("#prospect-search").addEventListener("input", (e) => {
 });
 
 // Re-score every enriched prospect against the current ICP, in place.
-$("#btn-rescore").addEventListener("click", async () => {
-  const btn = $("#btn-rescore"), orig = btn.innerHTML;
+// Two-click confirm (no window.confirm — it's suppressed in some hosted/iframe
+// contexts, which made the button look dead): first click arms, second runs.
+let RESCORE_ARMED = false;
+let RESCORE_TIMER = null;
+async function runRescore(btn, orig) {
   let dryRun = false;
   try {
     const st = await api("/api/status");
     dryRun = !(st.keys && st.keys.anthropic);
-  } catch (e) { /* fall back to a real run; the API will report if a key is missing */ }
-  const n = PROSPECTS.filter((p) => p.score !== null && p.score !== undefined).length;
-  const msg = dryRun
-    ? "No Anthropic key set — re-score with the free heuristic (stub) brain?"
-    : `Re-score ${n || "all"} prospect(s) against the current ICP with Claude? This costs one scoring call each.`;
-  if (!confirm(msg)) return;
+  } catch (e) { /* fall back to a real run; the API reports if a key is missing */ }
   btn.disabled = true;
   btn.textContent = "Re-scoring…";
   try {
     const r = await api("/api/rescore", "POST", { dry_run: dryRun });
     const scored = (r.counts && r.counts.scored) || 0;
     await loadProspects();
-    toast(`Re-scored ${scored} prospect(s)` + (r.dry_run ? " (heuristic)" : ` · $${(r.cost_usd || 0).toFixed(4)}`));
+    toast(`Re-scored ${scored} prospect(s)` + (r.dry_run ? " (heuristic — no Anthropic key)" : ` · $${(r.cost_usd || 0).toFixed(4)}`));
   } catch (e) {
     toast(e.message, true);
   } finally {
     btn.disabled = false;
     btn.innerHTML = orig;
   }
+}
+$("#btn-rescore").addEventListener("click", () => {
+  const btn = $("#btn-rescore");
+  if (RESCORE_ARMED) {
+    clearTimeout(RESCORE_TIMER);
+    RESCORE_ARMED = false;
+    const orig = btn.dataset.orig || btn.innerHTML;
+    runRescore(btn, orig);
+    return;
+  }
+  // Arm: show a confirm state for 4s, then revert.
+  RESCORE_ARMED = true;
+  btn.dataset.orig = btn.innerHTML;
+  const n = PROSPECTS.filter((p) => p.score !== null && p.score !== undefined).length;
+  btn.textContent = `Click again to re-score ${n || "all"}`;
+  toast("Re-scoring runs one Claude call per lead. Click again to confirm.");
+  RESCORE_TIMER = setTimeout(() => {
+    RESCORE_ARMED = false;
+    if (btn.dataset.orig) btn.innerHTML = btn.dataset.orig;
+  }, 4000);
 });
 
 // ── Lead detail (slide-over) ──────────────────────────────────────────────────
