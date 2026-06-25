@@ -119,4 +119,16 @@ def render_facts(facts: ProspectFacts) -> str:
         ("Signal", facts.signal_summary),
     ]
     lines.extend(f"{label}: {value}" for label, value in optional if value)
+    if facts.research_hook:
+        lines.append("")
+        lines.append(
+            "Researched hook (open on this — TRUE and specific; use it faithfully, do not "
+            f"embellish or add numbers): {facts.research_hook}"
+        )
+    else:
+        lines.append("")
+        lines.append(
+            "Researched hook: none found — do NOT fake specificity; open on an honest, "
+            "concrete observation about their sector or role."
+        )
     return "\n".join(lines)

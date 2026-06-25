@@ -55,6 +55,11 @@ defaults in the system prompt. British English throughout.
 - **Soft CTA + a concrete next step**, never a hard push — always an easy yes with a specific
   option: *"Happy to get on a quick call — I've got Tuesday or Thursday, what works your end?"*
 - **Em/en dashes** are on-brand used naturally and in moderation — don't ban them, don't overdo them.
+- **Don't run the same play every time.** These markers are a *seasoning*, not a template. Opening
+  every message with *"I'll keep this simple"* and leaning on *"Honestly,"* in all of them is the
+  fastest way to make a batch read as mail-merge. Per message use at most one of those two, vary the
+  first line, and let the structure change from prospect to prospect. If a hook is researched, open
+  on *that* — it does the personalising for you.
 
 ## Phrases he genuinely uses
 *"I'll keep this simple"*, *"Honestly,"*, *"worth 20 minutes"*, *"happy to…"*, *"no problem

@@ -23,6 +23,10 @@ class ProspectFacts(BaseModel):
     country: str | None = None
     company_size: int | None = None
     signal_summary: str | None = None
+    # A true, specific, recent fact to open on (from the research stage). When set, the
+    # opener must anchor to it faithfully; when None, the writer falls back to an honest
+    # sector observation rather than faking specificity.
+    research_hook: str | None = None
 
 
 class ScoreResult(BaseModel):

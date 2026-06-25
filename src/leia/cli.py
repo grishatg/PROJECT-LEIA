@@ -285,6 +285,7 @@ def run(
         f"{reports['enrich']['enriched']} with email, {reports['enrich']['failed']} without",
     )
     table.add_row("score", f"{reports['score']['scored']} scored")
+    table.add_row("research", f"{reports.get('research', {}).get('researched', 0)} opener hooks")
     table.add_row("draft", f"{reports['draft']['drafted']} drafts")
     table.add_row("queue", f"{reports['enqueue']['queued']} awaiting your approval")
     table.add_row("Claude cost", f"${reports['total_cost_usd']:.4f}")

@@ -42,11 +42,14 @@ from leia.models import (
     OutreachEvent,
     OutreachLog,
     Prospect,
+    ResearchNote,
     ScoredLead,
     Signal,
     SignalStatus,
     utcnow,
 )
+from leia.research.base import Researcher, research_prospect
+from leia.research.signal import SignalResearcher
 from leia.schemas import ProspectFacts
 from leia.sources.base import SignalSource
 from leia.suppression import is_suppressed
@@ -66,6 +69,7 @@ class Components:
     dry_run: bool
     channels: tuple[str, ...] = field(default_factory=lambda: ("email",))
     notes: list[str] = field(default_factory=list)
+    researchers: list[Researcher] = field(default_factory=list)
 
 
 def build_components(
@@ -132,6 +136,11 @@ def build_components(
             return UnipileLinkedInChannel(settings.unipile_api_key, settings.unipile_dsn)
         return StubChannel(channel)
 
+    # Researchers find the opener hook. SignalResearcher is free + offline (it only reads
+    # the signal already captured at ingest), so it always runs — even in dry-run. Paid
+    # researchers (web search) are appended later, behind their own key/flag checks.
+    researchers: list[Researcher] = [SignalResearcher()]
+
     return Components(
         brain=brain,
         enricher=enricher,
@@ -139,6 +148,7 @@ def build_components(
         dry_run=dry_run,
         channels=tuple(active_channels),
         notes=notes,
+        researchers=researchers,
     )
 
 
@@ -158,7 +168,11 @@ def _get_signal_summary(session: Session, prospect: Prospect) -> str | None:
     return f"Recent signal: {label}" + (f" (since {start_date})" if start_date else "")
 
 
-def build_facts(prospect: Prospect, signal_summary: str | None = None) -> ProspectFacts:
+def build_facts(
+    prospect: Prospect,
+    signal_summary: str | None = None,
+    research_hook: str | None = None,
+) -> ProspectFacts:
     ec = prospect.enrichment
     return ProspectFacts(
         full_name=prospect.full_name,
@@ -170,7 +184,23 @@ def build_facts(prospect: Prospect, signal_summary: str | None = None) -> Prospe
         country=getattr(ec, "country", None),
         company_size=getattr(ec, "company_size", None),
         signal_summary=signal_summary,
+        research_hook=research_hook,
     )
+
+
+def _best_hook_text(session: Session, prospect_id: str, account_id: str) -> str | None:
+    """The highest-confidence cached research hook for a prospect (or None)."""
+    notes = session.execute(
+        select(ResearchNote).where(
+            ResearchNote.account_id == account_id,
+            ResearchNote.prospect_id == prospect_id,
+        )
+    ).scalars().all()
+    if not notes:
+        return None
+    rank = {"high": 0, "medium": 1, "low": 2}
+    notes.sort(key=lambda n: rank.get(n.confidence, 1))
+    return notes[0].text
 
 
 def ensure_icp_row(session: Session, icp_config: ICPConfig, account_id: str = "local") -> ICP:
@@ -420,6 +450,68 @@ def rescore_all(
     )
 
 
+def research(
+    session: Session,
+    researchers: list[Researcher],
+    icp_row: ICP,
+    threshold: int = 60,
+    account_id: str = "local",
+    limit: int | None = None,
+) -> StageReport:
+    """Find one true, specific opener hook per scored lead (above threshold) and cache it.
+
+    Sits between score and draft. Idempotent (a prospect that already has a research note
+    is skipped) and best-effort (a prospect we find nothing for is simply left hook-less,
+    and drafting falls back to an honest sector observation)."""
+    if not researchers:
+        return StageReport(counts={"researched": 0})
+    q = select(ScoredLead).where(
+        ScoredLead.account_id == account_id,
+        ScoredLead.icp_id == icp_row.id,
+        ScoredLead.score >= threshold,
+    )
+    found = 0
+    for lead in session.execute(q).scalars().all():
+        prospect = session.get(Prospect, lead.prospect_id)
+        if prospect is None:
+            continue
+        if session.execute(
+            select(ResearchNote.id).where(
+                ResearchNote.account_id == account_id,
+                ResearchNote.prospect_id == prospect.id,
+            )
+        ).first():
+            continue  # already researched — never re-pay
+        signal = (
+            session.get(Signal, prospect.origin_signal_id)
+            if prospect.origin_signal_id
+            else None
+        )
+        facts = build_facts(prospect, _get_signal_summary(session, prospect))
+        hook = research_prospect(
+            facts,
+            researchers=researchers,
+            signal_source=signal.source if signal else None,
+            signal_raw=signal.raw_json if signal else None,
+        )
+        if hook:
+            session.add(
+                ResearchNote(
+                    account_id=account_id,
+                    prospect_id=prospect.id,
+                    text=hook.text,
+                    source=hook.source,
+                    url=hook.url,
+                    confidence=hook.confidence,
+                )
+            )
+            found += 1
+        if limit and found >= limit:
+            break
+    session.commit()
+    return StageReport(counts={"researched": found})
+
+
 def draft(
     session: Session,
     brain: Brain,
@@ -440,7 +532,11 @@ def draft(
     cost = 0.0
     for lead in session.execute(q).scalars().all():
         prospect = session.get(Prospect, lead.prospect_id)
-        facts = build_facts(prospect, _get_signal_summary(session, prospect))
+        facts = build_facts(
+            prospect,
+            _get_signal_summary(session, prospect),
+            research_hook=_best_hook_text(session, prospect.id, account_id),
+        )
         for ch in channels:
             if session.execute(
                 select(DraftMessage).where(
@@ -565,6 +661,15 @@ def run_until_queue(
     )
     reports["score"] = score_rep.counts
     total_cost = score_rep.cost_usd
+
+    reports["research"] = research(
+        session,
+        components.researchers,
+        icp_row,
+        threshold=icp_config.score_threshold,
+        account_id=account_id,
+        limit=limit,
+    ).counts
 
     draft_rep = draft(
         session,

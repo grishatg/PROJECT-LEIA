@@ -413,6 +413,23 @@ class Meeting(PKMixin, TenantMixin, TimestampMixin, Base):
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class ResearchNote(PKMixin, TenantMixin, TimestampMixin, Base):
+    """A researched opener hook for a prospect — one true, specific, recent fact.
+
+    Cached so we never re-pay to re-derive it, and auditable so the user can see *why*
+    an opener said what it said (and verify ``url``). Populated by the research stage,
+    read by drafting to anchor the opener.
+    """
+
+    __tablename__ = "research_notes"
+
+    prospect_id: Mapped[str] = mapped_column(ForeignKey("prospects.id"), index=True)
+    text: Mapped[str] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(String(40))
+    url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    confidence: Mapped[str] = mapped_column(String(10), default="medium")
+
+
 # All ORM tables, handy for Alembic and tests.
 ALL_TABLES = [
     ICP,
@@ -429,4 +446,5 @@ ALL_TABLES = [
     ConversationThread,
     Message,
     Meeting,
+    ResearchNote,
 ]
