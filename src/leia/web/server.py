@@ -53,6 +53,7 @@ from leia.web.serializers import (
     serialize_outreach,
     serialize_prospect_row,
 )
+from leia.web.settings_store import get_runtime_settings, save_runtime_settings
 
 # Applied to every data route so nothing runs without a verified login (when
 # Supabase is configured). Public routes below intentionally omit it.
@@ -458,49 +459,21 @@ def tasks_tick(
     payload: dict = Body(default={}),
     session: Session = Depends(get_session),
 ) -> dict:
-    """Advance conversations: pull the inbox, reply (auto-send `continue`, gate
-    meetings, suppress opt-outs). Driven by a scheduler (e.g. a Render cron job).
-
-    Uses the live Unipile LinkedIn inbox when its credentials are configured (and
-    not a dry-run); otherwise an empty stub inbox makes the tick a safe no-op. The
-    hybrid autonomy + suppression logic is fully exercised by the offline suite.
+    """The scheduler heartbeat (driven by a Render cron). Initiates new conversations and
+    advances existing ones, all behind the kill switch / business-hours / daily-cap /
+    always-ask gates. ``force`` ignores the business-hours gate (manual "run now"). The
+    logic lives in ``leia.tick`` so the cron can run it in-container without HTTP.
     """
-    from leia.conversation import advance_conversations
-    from leia.inbox.stub import StubInbox
+    from leia.tick import run_scheduler_tick
 
-    settings = get_settings()
-    app_settings = load_app_settings()
-    dry_run = bool(payload.get("dry_run", False))
     try:
-        components = build_components(
-            dry_run=dry_run,
-            settings=settings,
-            app_settings=app_settings,
+        return run_scheduler_tick(
+            session,
+            dry_run=bool(payload.get("dry_run", False)),
+            force=bool(payload.get("force", False)),
         )
     except RuntimeError as e:
         raise HTTPException(400, str(e)) from e
-    if components.brain is None:
-        raise HTTPException(400, "A brain is required to advance conversations.")
-
-    inbox = StubInbox()
-    if not dry_run and settings.unipile_api_key and settings.unipile_dsn:
-        from leia.inbox.unipile import UnipileInbox
-
-        inbox = UnipileInbox(
-            settings.unipile_api_key, settings.unipile_dsn, settings.unipile_account_id
-        )
-
-    counts = advance_conversations(
-        session,
-        inbox=inbox,
-        brain=components.brain,
-        channel_for=components.channel_for,
-        value_prop=load_value_prop(),
-        guidelines=load_message_guidelines(),
-        booking_url=settings.booking_url,
-        reply_cap=app_settings.limits.daily_send_cap,
-    )
-    return {"counts": counts, "notes": components.notes}
 
 
 @app.get("/api/export/prospects.csv", dependencies=_AUTH)
@@ -572,3 +545,23 @@ def put_icp(
     except OSError:
         pass
     return cfg.model_dump()
+
+
+@app.get("/api/settings", dependencies=_AUTH)
+def get_settings_endpoint(session: Session = Depends(get_session)) -> dict:
+    """Runtime settings for the Settings page (+ the tone dropdown's options)."""
+    from leia.llm.tone import tone_options
+
+    return {"settings": get_runtime_settings(session), "tone_options": tone_options()}
+
+
+@app.put("/api/settings", dependencies=_AUTH)
+def put_settings_endpoint(
+    payload: dict = Body(...),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Persist a partial settings update (DB-backed; survives redeploys)."""
+    updates = payload.get("settings", payload)
+    if not isinstance(updates, dict):
+        raise HTTPException(422, "settings must be an object")
+    return {"settings": save_runtime_settings(session, updates)}
