@@ -317,6 +317,45 @@ def _build_source(source: str, *, dry_run: bool, input_csv: str | None, dataset:
     raise HTTPException(400, f"Unknown source '{source}'")
 
 
+@app.post("/api/upload", dependencies=_AUTH)
+def upload_csv(payload: dict = Body(...)) -> dict:
+    """Accept a CSV's text content from the browser, validate + store it, and
+    return a server path that the /api/run ``manual_csv`` source can read.
+
+    Kept as JSON (the browser reads the file with FileReader and posts the text)
+    so we avoid a python-multipart dependency. Contact lists are small.
+    """
+    import csv as _csv
+    import io as _io
+    import re as _re
+
+    content = payload.get("content") or ""
+    filename = payload.get("filename") or "upload.csv"
+    if not content.strip():
+        raise HTTPException(400, "That file looks empty.")
+
+    reader = _csv.DictReader(_io.StringIO(content))
+    headers = {(h or "").strip().lower() for h in (reader.fieldnames or [])}
+    if not headers & {"full_name", "name", "fullname", "full name"}:
+        raise HTTPException(
+            400,
+            "Your CSV needs a name column. Accepted columns: "
+            "full_name, headline, company_name, linkedin_url, email.",
+        )
+    rows = [r for r in reader if any((v or "").strip() for v in r.values())]
+    if not rows:
+        raise HTTPException(400, "No contact rows found in that file.")
+
+    uploads = _REPO_ROOT / "data" / "uploads"
+    uploads.mkdir(parents=True, exist_ok=True)
+    safe = _re.sub(r"[^A-Za-z0-9._-]", "_", Path(filename).name).strip("_") or "upload"
+    if not safe.lower().endswith(".csv"):
+        safe += ".csv"
+    dest = uploads / safe
+    dest.write_text(content, encoding="utf-8")
+    return {"path": str(dest), "rows": len(rows), "filename": safe}
+
+
 @app.post("/api/run", dependencies=_AUTH)
 def run_pipeline(
     payload: dict = Body(default={}),
