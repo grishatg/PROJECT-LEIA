@@ -385,18 +385,19 @@ def tasks_tick(
     """Advance conversations: pull the inbox, reply (auto-send `continue`, gate
     meetings, suppress opt-outs). Driven by a scheduler (e.g. a Render cron job).
 
-    Until real inbox providers (Instantly/Unipile) are wired, the inbox is a stub
-    — an empty tick is a safe no-op. The hybrid autonomy + suppression logic is
-    fully exercised by the offline test suite.
+    Uses the live Unipile LinkedIn inbox when its credentials are configured (and
+    not a dry-run); otherwise an empty stub inbox makes the tick a safe no-op. The
+    hybrid autonomy + suppression logic is fully exercised by the offline suite.
     """
     from leia.conversation import advance_conversations
     from leia.inbox.stub import StubInbox
 
     settings = get_settings()
     app_settings = load_app_settings()
+    dry_run = bool(payload.get("dry_run", False))
     try:
         components = build_components(
-            dry_run=bool(payload.get("dry_run", False)),
+            dry_run=dry_run,
             settings=settings,
             app_settings=app_settings,
         )
@@ -405,9 +406,17 @@ def tasks_tick(
     if components.brain is None:
         raise HTTPException(400, "A brain is required to advance conversations.")
 
+    inbox = StubInbox()
+    if not dry_run and settings.unipile_api_key and settings.unipile_dsn:
+        from leia.inbox.unipile import UnipileInbox
+
+        inbox = UnipileInbox(
+            settings.unipile_api_key, settings.unipile_dsn, settings.unipile_account_id
+        )
+
     counts = advance_conversations(
         session,
-        inbox=StubInbox(),  # TODO: real Instantly/Unipile inbox providers
+        inbox=inbox,
         brain=components.brain,
         channel_for=components.channel_for,
         value_prop=load_value_prop(),

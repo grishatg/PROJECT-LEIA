@@ -48,9 +48,12 @@ def _seed_prospect(session):
     return p
 
 
-def _advance(session, body):
+def _advance(session, body, provider_id=None):
+    # Distinct provider_id per body by default, so the idempotency guard doesn't
+    # collapse separate turns; pass an explicit id to test re-polling.
+    pid = provider_id or f"m-{abs(hash(body)) % 100000}"
     inbox = StubInbox(
-        [InboundReply(provider_id="m1", channel="email", from_email=EMAIL, body=body)]
+        [InboundReply(provider_id=pid, channel="email", from_email=EMAIL, body=body)]
     )
     return advance_conversations(
         session, inbox=inbox, brain=StubBrain(), channel_for=_chan,
@@ -111,6 +114,18 @@ def test_thread_reused_across_two_turns(session):
     _advance(session, "Got it, thanks.")
     assert session.query(ConversationThread).count() == 1
     assert len(session.query(Message).all()) == 4  # 2 inbound + 2 outbound
+
+
+def test_idempotent_on_provider_id(session):
+    """Re-polling the same message (same provider_id) must not reprocess it."""
+    _seed_prospect(session)
+    first = _advance(session, "Tell me more.", provider_id="dup-1")
+    assert first["inbound"] == 1
+    second = _advance(session, "Tell me more.", provider_id="dup-1")
+    assert second["skipped"] == 1
+    assert second["inbound"] == 0
+    inbound = [m for m in session.query(Message).all() if m.direction == MessageDirection.INBOUND]
+    assert len(inbound) == 1  # recorded exactly once
 
 
 def test_tick_endpoint_is_a_safe_noop():
