@@ -50,7 +50,14 @@ the app. You won't touch a server — it's all dashboards.
 - **Free plan** sleeps after ~15 min idle; the first visit then takes ~30–60s to
   wake. Upgrade the service to **Starter (~$7/mo)** in Render for always-on.
 - **Supabase free** database pauses after ~7 days idle — un-pause it in the Supabase
-  dashboard if that happens.
+  dashboard if that happens. The app no longer crashes when this happens: it starts
+  anyway and reconnects on its own once the database is back (a redeploy re-runs any
+  pending migrations).
+- **Seeing `tenant/user postgres.<ref> not found` (or `ENOTFOUND`) in the logs?**
+  That is the paused-database symptom above — Supabase's connection pooler rejects a
+  paused project. Fix: open the Supabase dashboard → your project → **Restore/Resume**,
+  wait ~a minute for it to come up, then reload the app. Nothing in `DATABASE_URL`
+  needs changing.
 - **Dry-run is free.** Real lead-finding needs **Lusha credits**; drafting/sending
   needs your Anthropic/Instantly keys.
 - **Change your password / add a user:** Supabase → Authentication → Users.

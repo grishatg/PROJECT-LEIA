@@ -19,7 +19,7 @@ from leia.config import (
     load_message_guidelines,
     load_value_prop,
 )
-from leia.db import resolve_database_url, upgrade_database
+from leia.db import DatabaseUnavailable, resolve_database_url, upgrade_database
 
 app = typer.Typer(
     help="PROJECT-LEIA - your personal AI lead-gen agent.",
@@ -35,13 +35,30 @@ def version() -> None:
     console.print(f"PROJECT-LEIA [bold]{__version__}[/]")
 
 
+def _migrate_with_progress() -> None:
+    """Run migrations, narrating retries. Raises DatabaseUnavailable if unreachable."""
+
+    def _on_retry(attempt: int, delay: float, exc: Exception) -> None:
+        console.print(
+            f"[yellow]Database not reachable yet[/] (attempt {attempt}); "
+            f"retrying in {delay:.0f}s… "
+            "[dim](a just-resumed Supabase project takes ~a minute to wake)[/]"
+        )
+
+    upgrade_database(on_retry=_on_retry)
+
+
 @app.command(name="init-db")
 def init_db_cmd() -> None:
     """Create/upgrade the local database schema via migrations (idempotent).
 
     Run this from the repository root.
     """
-    upgrade_database()
+    try:
+        _migrate_with_progress()
+    except DatabaseUnavailable as e:
+        console.print(f"[red]Database unavailable[/]\n{e}")
+        raise typer.Exit(code=1) from e
     console.print(f"[green]OK[/] database ready at [bold]{resolve_database_url()}[/]")
 
 
@@ -421,9 +438,29 @@ def export(
 def dashboard(
     port: int = typer.Option(8000, help="Port for the web control center."),
     host: str = typer.Option("127.0.0.1", help="Bind address (local only by default)."),
+    migrate: bool = typer.Option(
+        False,
+        "--migrate",
+        help="Run DB migrations before serving (best-effort; used on the hosted boot).",
+    ),
 ) -> None:
     """Launch the web control center in your browser (run, review, approve, send)."""
     import uvicorn
+
+    if migrate:
+        # Boot posture (Render): keep the schema current, but NEVER let a sleeping
+        # database stop the web server from starting. If the DB is unreachable we
+        # log the plain-English cause and serve anyway — /healthz stays green (no
+        # crash-loop), the login page renders, and pool_pre_ping reconnects the
+        # moment the database wakes up. A redeploy re-runs migrations.
+        try:
+            _migrate_with_progress()
+            console.print("[green]OK[/] database schema is up to date.")
+        except DatabaseUnavailable as e:
+            console.print(
+                f"[yellow]Starting without a healthy database[/] "
+                f"(will reconnect automatically once it's back):\n{e}"
+            )
 
     console.print(
         f"[green]Launching LEIA[/] at [bold]http://localhost:{port}[/] (Ctrl+C to stop)"
