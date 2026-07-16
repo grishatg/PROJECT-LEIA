@@ -14,5 +14,7 @@ RUN uv sync --frozen --no-dev
 ENV PORT=8000
 EXPOSE 8000
 
-# Run DB migrations, then serve. $PORT is provided by the host (Render sets it).
-CMD ["sh", "-c", "uv run leia init-db && uv run leia dashboard --host 0.0.0.0 --port ${PORT:-8000}"]
+# Migrate (best-effort, with retry) then serve — in one process so a briefly
+# paused/waking database can't stop the web server from starting. $PORT is
+# provided by the host (Render sets it).
+CMD ["sh", "-c", "uv run leia dashboard --migrate --host 0.0.0.0 --port ${PORT:-8000}"]
